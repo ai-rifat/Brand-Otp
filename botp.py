@@ -5,582 +5,593 @@ import json
 import html
 import os
 import httpx
+import pyotp
 import random
 import string
-import time
-import unicodedata
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters, CallbackQueryHandler
-from telegram.request import HTTPXRequest
-
-try:
-    from telegram import CopyTextButton
-    HAS_COPY_BTN = True
-except ImportError:
-    HAS_COPY_BTN = False
-
-# ==================== EMOJI CONFIGURATION ENGINE ====================
-
-EMOJI_ID_MAP = {
-    "telegram": "5271801931814165886",
-    "instagram": "5269682734820777950",
-    "facebook": "5269427536453984598",
-    "tiktok": "5271527792641595125",
-    "x": "5269500885905468781",
-    "whatsapp": "5271536803482981220",
-    "discord": "5807892405306791778",
-    "uber": "5298715455316303708",
-    "up": "5244837092042750681",
-    "down": "5246762912428603768",
-    "add": "5397916757333654639",
-    "setting": "5341715473882955310",
-    "1st": "5440539497383087970",
-    "2st": "5447203607294265305",
-    "3rd": "5453902265922376865",
-    "free": "5406756500108501710",
-    "msg": "5253742260054409879",
-    "link": "5271604874419647061",
-    "status": "5231200819986047254",
-    "home": "5416041192905265756",
-    "gift_box": "5970074171449808121",
-    "delete": "5422557736330106570",
-    "refer_btn": "5420396762189831222",
-    "get_number_btn": "5382357040008021292",
-    "cross": "5420130255174145507",
-    "stop": "5956074558044770726",
-    "ban": "5420323339723881652",
-    "done": "6298670698948724690",
-    "nagad": "5352985330628730418",
-    "bkash": "5348469219761626211",
-    "rocket": "5346042941196507141",
-    "binance": "5348212415077064131",
-    "live": "5355102594886833928",
-    "channel": "6215074610845585917",
-    "admin": "5350396951407895212",
-    "waiting": "6217721388736712699",
-    "back": "5267490665117275176",
-    "leader_board": "5280769763398671636",
-    "money": "6233367447789899509",
-    "change_number": "5402186569006210455"
-}
-
-PREMIUM_FLAGS = {
-    "🇺🇸": "5913463998522592692",
-    "🇺🇦": "5911406692007941050",
-    "🇵🇱": "5913550391789752571",
-    "🇰🇿": "5913724621433082323",
-    "🇨🇳": "5913779335021466780",
-    "🇦🇿": "5911197578640233518",
-    "🇪🇺": "5911106310585193018",
-    "🇦🇲": "5913272455866093666",
-    "🇷🇺": "5913274246867456342",
-    "🇺🇿": "5911051846104912282",
-    "🇩🇪": "5911096835887337583",
-    "🇯🇵": "5913293711659241040",
-    "🇹🇷": "5910995113881901195",
-    "🇧🇾": "5911011185649521599",
-    "🇬🇧": "5913443365499703513",
-    "🇮🇳": "5913754823643107921",
-    "🇧🇷": "5911148568768418614",
-    "🇿🇲": "5913564754160389778",
-    "🇾🇪": "5913346492512341993",
-    "🇻🇳": "5913428887164949581",
-    "🇨🇲": "5911172109484167745",
-    "🇨🇮": "5222233374948602940",
-    "🇲🇬": "5913766918271012920",
-    "🇷🇴": "5913460373570195273",
-    "🇨🇫": "5913443245240619222",
-    "🇹🇬": "5913423260757790970",
-    "🇧🇯": "5913735869952430547",
-    "🇸🇱": "5911210450657218661",
-    "🇧🇩": "5911365056594973179",
-    "🇰🇷": "5913371673905598425",
-    "🇬🇶": "5911306279967529251",
-    "🇬🇱": "5292014752283774878",
-    "🇫🇴": "5296469342039327674",
-    "🇧🇳": "5911336409163109113",
-    "🇧🇬": "5294329219965272288",
-    "🇧🇫": "5913407764515786948",
-    "🇪🇷": "5433723401464198287",
-    "🇲🇼": "5433968339154122439",
-    "🇲🇷": "5433859405898594234",
-    "🇳🇷": "5434131139889478358",
-    "🇸🇦": "4985897134424328239",
-    "🇹🇴": "5433640100573491806",
-    "🇹🇻": "5433684690923961019",
-    "🇹🇼": "5366187256937726720",
-    "🇭🇰": "5292166459118606932",
-    "🇲🇴": "6323557758096377611",
-    "🇨🇺": "5431551436502611633",
-    "🇰🇵": "5434142701941437163",
-    "🇻🇪": "5434009132753499322",
-    "🇸🇾": "5433910876786670092",
-    "🇲🇲": "5433666360003540231",
-    "🇳🇮": "5334807849418003620",
-    "🇬🇳": "5913471858312744319",
-    "🇰🇪": "5222279743415531561",
-    "🏴󠁧󠁢󠁷󠁬󠁳󠁿": "5911297801702084799",
-    "🇻🇦": "5911211932420938860",
-    "🇻🇺": "5913511535220625585",
-    "🇺🇾": "5913623088406204470",
-    "🇦🇪": "5913726554168365343",
-    "🇺🇬": "5913488939397681980",
-    "🇹🇲": "5913315521503170180",
-    "🇹🇳": "5911332947419468671",
-    "🇹🇹": "5911228635548750294",
-    "🇹🇭": "5913617968805187987",
-    "🇹🇿": "5911418949844603556",
-    "🇹🇯": "5911287639809463107",
-    "🇨🇭": "5913271227505448072",
-    "🇸🇪": "5911156510162949403",
-    "🇸🇿": "5913374525763883286",
-    "🇸🇷": "5913275539652611719",
-    "🇸🇩": "5911387497799094470",
-    "🇪🇸": "5911193287967904547",
-    "🇱🇰": "5911293163137406640",
-    "🇸🇸": "5911406262511211744",
-    "🇿🇦": "5911203119148044594",
-    "🇸🇴": "5911397852965244436",
-    "🇸🇧": "5911482712929080608",
-    "🇸🇮": "5913431983836368644",
-    "🇸🇰": "5913751666842145020",
-    "🇸🇬": "5911531460808051849",
-    "🇸🇨": "5911185183364616913",
-    "🇷🇸": "5913592598433369871",
-    "🇸🇳": "5910995302860461643",
-    "🏴󠁧󠁢󠁳󠁣󠁴󠁿": "5911460091336331851",
-    "🇸🇹": "5913574331937462345",
-    "🇸🇲": "5913587968458625465",
-    "🇼🇸": "5913325971158602854",
-    "🇰🇳": "5913691898077253637",
-    "🇻🇨": "5911318941531116255",
-    "🇱🇨": "5911243659344351824",
-    "🇵🇸": "5913684768431541668",
-    "🇷🇼": "5911455229433352234",
-    "🇶🇦": "5911260864983339619",
-    "🇵🇷": "5911504350974317480",
-    "🇵🇹": "5911023653939581472",
-    "🇵🇭": "5911268638874145162",
-    "🇵🇪": "5911207993935925780",
-    "🇵🇾": "5911014265141072316",
-    "🇵🇬": "5911107251183030903",
-    "🇵🇦": "5913428968769327174",
-    "🇵🇼": "5911283903187915549",
-    "🇵🇰": "5913705895375672082",
-    "🇴🇲": "5913570801474343473",
-    "🇳🇴": "5913617397574537046",
-    "🇳🇬": "5911143844304393105",
-    "🇳🇪": "5911270086278124251",
-    "🇳🇿": "5913640044937089340",
-    "🇳🇱": "5913367645226275100",
-    "🇳🇵": "5913496520014958723",
-    "🇳🇦": "5911108535378252443",
-    "🇲🇿": "5911333419865871464",
-    "🇲🇦": "5911482111633658301",
-    "🇲🇪": "5913239436157522151",
-    "🇲🇳": "5911041383564580038",
-    "🇲🇨": "5911245347266500057",
-    "🇲🇩": "5913456847402045950",
-    "🇲🇻": "5913501399097806832",
-    "🇲🇱": "5911305266355245916",
-    "🇲🇹": "5911023714069123567",
-    "🇧🇲": "5913680005312811090",
-    "🇲🇶": "5911378005921370347",
-    "🇲🇭": "5913235935759175692",
-    "🇲🇺": "5913291113204027321",
-    "🇲🇽": "5913687302462246518",
-    "🇫🇲": "5911271104185373336",
-    "🇲🇾": "5913654360063087453",
-    "🇲🇰": "5913394029210374721",
-    "🇱🇺": "5913390842344640293",
-    "🇱🇹": "5911172315642597775",
-    "🇱🇮": "5911166650580734660",
-    "🇱🇾": "5911236989260140996",
-    "🇱🇷": "5913324167272337727",
-    "🇰🇮": "5911294443037660118",
-    "🇽🇰": "5911433681582429010",
-    "🇰🇼": "5913290705182134003",
-    "🇰🇬": "5911202161370337549",
-    "🇱🇦": "5913718526874489279",
-    "🇱🇻": "5913738489882480243",
-    "🇱🇧": "5911504273664905447",
-    "🇱🇸": "5911059881988723711",
-    "🇮🇩": "5913479361620611038",
-    "🇮🇷": "5911308891307643032",
-    "🇮🇶": "5911382442622587735",
-    "🇮🇪": "5913440715504881532",
-    "🇮🇱": "5911471936856134692",
-    "🇮🇹": "5913688444923547525",
-    "🇯🇲": "5913232280742006526",
-    "🇯🇴": "5913234136167878475",
-    "🇮🇸": "5911047899029967246",
-    "🇭🇺": "5913767635530551104",
-    "🇭🇳": "5911406889576436289",
-    "🇭🇹": "5913459789454643194",
-    "🇬🇾": "5913579412883771480",
-    "🇬🇼": "5911398694778836149",
-    "🇬🇹": "5913324858762072330",
-    "🇬🇩": "5913228063084121946",
-    "🇬🇷": "5911210399117611448",
-    "🇬🇭": "5913391155877252952",
-    "🇬🇪": "5913434771270144023",
-    "🇬🇲": "5913657267755945883",
-    "🇬🇦": "5911037896051137264",
-    "🇫🇷": "5913605586414473124",
-    "🇫🇮": "5911041344909873378",
-    "🇫🇯": "5911393832875856716",
-    "🇪🇹": "5911078333168227043",
-    "🇩🇴": "5911152099231536123",
-    "🇩🇲": "5911377121158107430",
-    "🇩🇯": "5911407709915190157",
-    "🇩🇰": "5911206009661034712",
-    "🇨🇾": "5911023550860366409",
-    "🇭🇷🇨🇷": "5913692684056269311",
-    "🇨🇷": "5911261745451635030",
-    "🇨🇬": "5911338788574990168",
-    "🇨🇩": "5913770362834783827",
-    "🇰🇲": "5911338582416560604",
-    "🇰🇭": "5913699998385573485",
-    "🇨🇦": "5913623736946265914",
-    "🇨🇻": "5913571501554012193",
-    "🇹🇩": "5913299849167507310",
-    "🇨🇿": "5911198691036764307",
-    "🇨🇱": "5911470957603592832",
-    "🇨🇴": "5913773060074246009",
-    "🇧🇮": "5913766441529642752",
-    "🇧🇼": "5911513782722499475",
-    "🇧🇦": "5913700002680541032",
-    "🇧🇴": "5913638795101606133",
-    "🇧🇹": "5913236734623093021",
-    "🇦🇷": "5913573356979884082",
-    "🇦🇺": "5913632326880858455",
-    "🇦🇹": "5911338831524664592",
-    "🇧🇸": "5911451643135660214",
-    "🇧🇭": "5913581663446634403",
-    "🇧🇧": "5911016996740272263",
-    "🇧🇪": "5913529642802745141",
-    "🇧🇿": "5913355005137522807",
-    "🇦🇬": "5913389025573475085",
-    "🇦🇴": "5913753316109586411",
-    "🇦🇩": "5911314702398396902",
-    "🇩🇿": "5913782968563800236",
-    "🇦🇱": "5911357458797826163",
-    "🇦𝒇": "5913492040364068694",
-    "🇿🇼": "5911092502265336396"
-}
-
-def p_em(key: str, fallback: str = "⭐") -> str:
-    key_clean = str(key).strip().lower()
-    if key_clean in EMOJI_ID_MAP:
-        return f'<tg-emoji emoji-id="{EMOJI_ID_MAP[key_clean]}">{fallback}</tg-emoji>'
-    if key in PREMIUM_FLAGS:
-        return f'<tg-emoji emoji-id="{PREMIUM_FLAGS[key]}">{fallback}</tg-emoji>'
-    return fallback
-
-def strip_html_tags(text: str) -> str:
-    return re.sub(r'<[^>]*>', '', str(text))
 
 # ==================== CONFIG SECTION ====================
 
 BOT_TOKEN = "8933906969:AAHirWoLkf6qLYOdtUf6EMfVSdAV76mVfCY"
-API_KEY = "api_key_by_mino"  
-BASE_URL = "https://mino-sms-panel.xyz"      
-
-# --- SYSTEM IDS & ADMINS ---
-ADMINS = [6298161330]
-OTP_GROUP_ID = -5547245851
-
-# --- SYSTEM LINKS & USERNAME SETTINGS ---
-DEFAULT_WELCOME_MESSAGE = f"{p_em('live')} <b>BRAND OTP BOT</b> {p_em('live')}\n━━━━━━━━━━━━━━━━━━━━━━━━\n{p_em('status')} <b>START INSTANT OTP RECEPTION NOW!</b> {p_em('status')}\n━━━━━━━━━━━━━━━━━━━━━━━━"
-DEFAULT_OTP_GROUP_URL = "https://t.me/+34nVa990VBZkY2Nl"
-DEFAULT_CHANNEL_URL = "https://t.me/brandworkers"
-DEFAULT_SUPPORT_USERNAME = "@ati_support_bot"
-FORCE_JOIN_CHANNELS = ["@brandworkers"]
-
-# --- WITHDRAWAL & STATS LIMITS ---
-DEFAULT_MIN_WITHDRAW = 0.5
-DEFAULT_MAX_WITHDRAW = 100.0
-DEFAULT_COOLDOWN_TIME = 1.0
-DEFAULT_OTP_REWARD = 0.0030
-DEFAULT_REFER_BONUS = 0.050
-DEFAULT_NUMBERS_PER_REQUEST = 3
-MAX_NUMBERS_PER_USER = 10000
-
-# --- DATA FILES ---
+API_KEY = "FASTXOTP_6F62B5EFBBD6E0392DADC775"
+BASE_URL = "https://otpapi.miahhost.com/@Telegram/@Bot/3oo10/@public/"
 USER_DATA_FILE = "users.json"
 PAID_SMS_FILE = "paid_sms.json"
 STATS_FILE = "user_stats.json"
+REFERRAL_DATA_FILE = "referral_data.json"
 BANNED_USERS_FILE = "banned_users.json"
 WITHDRAW_DATA_FILE = "withdraw_requests.json"
 ACTIVITY_LOGS_FILE = "activity_logs.json"
 DATA_RANGE_FILE = "datarange.json"
-SETTINGS_FILE = "settings.json"
-ACTIVE_NUMBERS_FILE = "active_numbers.json"
-MANUAL_RANGES_FILE = "manual_ranges.json"
-
-# ========================================================
-
-def load_active_numbers():
-    if not os.path.exists(ACTIVE_NUMBERS_FILE):
-        return {}
-    try:
-        with open(ACTIVE_NUMBERS_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_active_numbers(data):
-    try:
-        with open(ACTIVE_NUMBERS_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print(f"Error saving active numbers: {e}")
-
-# ==================== MANUAL RANGE STORAGE ====================
-
-def load_manual_ranges():
-    if not os.path.exists(MANUAL_RANGES_FILE):
-        with open(MANUAL_RANGES_FILE, "w") as f:
-            json.dump({}, f)
-        return {}
-    try:
-        with open(MANUAL_RANGES_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_manual_ranges(data):
-    try:
-        with open(MANUAL_RANGES_FILE, "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        print(f"Error saving manual ranges: {e}")
-
-# ==================== BUTTON COLOR PATCH ENGINE ====================
-
-def rbtn(text: str, style: str = None, callback_data: str = None, url: str = None, icon_custom_emoji_id: str = None):
-    clean_text = strip_html_tags(text)
-    kwargs = {"text": clean_text}
-    if callback_data:
-        kwargs["callback_data"] = callback_data
-    if url:
-        kwargs["url"] = url
-    
-    if style:
-        kwargs["style"] = style
-    if icon_custom_emoji_id:
-        kwargs["icon_custom_emoji_id"] = icon_custom_emoji_id
-        
-    try:
-        return InlineKeyboardButton(**kwargs)
-    except TypeError:
-        kwargs.pop("style", None)
-        kwargs.pop("icon_custom_emoji_id", None)
-        
-        api_kwargs = {}
-        if style:
-            api_kwargs["style"] = style
-        if icon_custom_emoji_id:
-            api_kwargs["icon_custom_emoji_id"] = icon_custom_emoji_id
-            
-        if api_kwargs:
-            kwargs["api_kwargs"] = api_kwargs
-            
-        return InlineKeyboardButton(**kwargs)
+SYS_CONFIG_FILE = "sys_config.json"
 
 
-def rkbtn(text: str, icon_custom_emoji_id: str = None, style: str = None):
-    kwargs = {"text": text}
-    if icon_custom_emoji_id:
-        kwargs["icon_custom_emoji_id"] = icon_custom_emoji_id
-    if style:
-        kwargs["style"] = style
-        
-    try:
-        return KeyboardButton(**kwargs)
-    except TypeError:
-        kwargs.pop("icon_custom_emoji_id", None)
-        kwargs.pop("style", None)
-        api_kwargs = {}
-        if icon_custom_emoji_id:
-            api_kwargs["icon_custom_emoji_id"] = icon_custom_emoji_id
-        if style:
-            api_kwargs["style"] = style
-        if api_kwargs:
-            kwargs["api_kwargs"] = api_kwargs
-        return KeyboardButton(**kwargs)
+# ==================== CUSTOM PREMIUM EMOJI IDs CONFIG ====================
+CUSTOM_EMOJIS = {
+    "GET_NUMBER": "5330237710655306682",  
+    "TRAFFIC": "5330237710655306682",     
+    "2FA": "your_emoji_id_here",         
+    "SUPPORT": "6168100351665773873",     
+    "PROFILE": "6129812419028982717",     
+    "REFER": "5843618080713874142",       
+    "WITHDRAW": "your_emoji_id_here",     
+    "LANG": "your_emoji_id_here",         # ল্যাঙ্গুয়েজ বাটনের জন্য ইমোজি কী
 
-# ==================== SYSTEM DYNAMIC SETTINGS ====================
+    "INSTAGRAM": "your_emoji_id_here",   
+    "TELEGRAM": "5330237710655306682",    
+    "WHATSAPP": "5334998226636390258",    
+    "FACEBOOK": "5323261730283863478",    
+    "TIKTOK": "your_emoji_id_here",      
+    "CLOSE": "your_emoji_id_here",       
 
-def load_settings():
-    default_settings = {
-        "max_numbers_per_user": MAX_NUMBERS_PER_USER,
-        "welcome_message": DEFAULT_WELCOME_MESSAGE,
-        "otp_group_url": DEFAULT_OTP_GROUP_URL,
-        "channel_url": DEFAULT_CHANNEL_URL,
-        "support_username": DEFAULT_SUPPORT_USERNAME,
-        "maintenance_mode": False,
-        "min_withdraw": DEFAULT_MIN_WITHDRAW,
-        "max_withdraw": DEFAULT_MAX_WITHDRAW,
-        "api_key": API_KEY,
-        "base_url": BASE_URL,
-        "cooldown_time": DEFAULT_COOLDOWN_TIME,          
-        "force_join_enabled": False,   
-        "force_join_channels": FORCE_JOIN_CHANNELS, 
-        "join_alert_enabled": True,     
-        "otp_reward": DEFAULT_OTP_REWARD,          
-        "refer_bonus": DEFAULT_REFER_BONUS,          
-        "numbers_per_request": DEFAULT_NUMBERS_PER_REQUEST,
-        "auto_range": True      
+    "BKASH": "your_emoji_id_here",       
+    "NAGAD": "your_emoji_id_here",       
+    "ROCKET": "your_emoji_id_here",      
+    "BINANCE": "your_emoji_id_here",     
+}
+
+# কাস্টমাইজার প্যানেলে এডমিনদের বোঝার সুবিধার জন্য লেবেল ম্যাপিং
+CUSTOMIZER_HUMAN_NAMES = {
+    "WELCOME": "💎 Welcome Message (/start)",
+    "GET_NUMBER": "📱 GET NUMBER (Main Button & Page 1 Title)",
+    "GET_NUMBER_PAGE2": "🌍 SELECT COUNTRY (Page 2 Title)",
+    "ALLOCATION_PENDING": "⏳ SCANNING NODE (Page 3 Pending Title)",
+    "DECRYPTION_SUCCESS": "🔑 NODE DECRYPTED (Page 4 Success Title)",
+    "TRAFFIC": "📟 TRAFFIC (Main Button & Leaderboard Title)",
+    "2FA": "🔐 2FA ONLINE (Main Button & Prompt Title)",
+    "SUPPORT": "👤 SUPPORT (Main Button & Home Title)",
+    "HELP_CENTER": "💬 Support: Help Center Channel Button",
+    "DEV_SUPPORT": "👨‍💻 Support: Developer Support Button",
+    "REFER": "🎁 REFERRAL (Main Button & Screen Title)",
+    "PROFILE": "👤 PROFILE (Main Button & Screen Title)",
+    "WITHDRAW": "💸 WITHDRAW (Profile Button & Gateway Title)",
+    "BKASH": "🌸 WITHDRAW: bKash Gateway Button",
+    "NAGAD": "🍊 WITHDRAW: Nagad Gateway Button",
+    "LANG": "🌐 LANGUAGE (Main Button & Translation Screen)"
+}
+
+# পেজিনেটেড কান্ট্রি লিস্টের জন্য সাধারণ প্রিফিক্সসমূহ
+COMMON_PREFIXES = [
+    "237", "225", "261", "40", "27", "234", "254", "233", "212", "213", 
+    "20", "880", "91", "7", "1", "44", "33", "49", "92", "90", "964", "966", "380"
+]
+
+
+# ==================== PERSISTENT CONFIGURATION LOADER ====================
+def load_sys_config():
+    default_config = {
+        "official_channel_id": -1003941468281,
+        "official_channel_link": "https://t.me/shiyam7449266",
+        "active_services": {
+            "INSTAGRAM": True,
+            "TELEGRAM": True,
+            "WHATSAPP": True,
+            "FACEBOOK": True,
+            "TIKTOK": True
+        },
+        "service_emojis": {},
+        "country_overrides": {},
+        "service_name_overrides": {},
+        "custom_buttons": {
+            "GET_NUMBER": {
+                "labels": {"en": "💬 GET NUMBER", "bn": "💬 নম্বর নিন"},
+                "messages": {
+                    "en": "📲 <b>[ GET ACTIVE NODE ]</b>\n\nSelect your target service from the database:",
+                    "bn": "📲 <b>[ নম্বর নোড কানেকশন ]</b>\n\nনিচের লিস্ট থেকে আপনার টার্গেট সার্ভিসটি সিলেক্ট করুন:"
+                },
+                "emoji_id": "5330237710655306682"
+            },
+            "GET_NUMBER_PAGE2": {
+                "labels": {"en": "🌍 SELECT COUNTRY", "bn": "🌍 দেশ নির্বাচন"},
+                "messages": {
+                    "en": "📲 <b>[ GET ACTIVE NODE ]</b>\n\n🎯 Service: <b>{sid}</b>\n🌍 Select origin prefix:",
+                    "bn": "📲 <b>[ নম্বর নোড কানেকশন ]</b>\n\n🎯 সার্ভিস: <b>{sid}</b>\n🌍 কান্ট্রি বা দেশ সিলেক্ট করুন:"
+                },
+                "emoji_id": ""
+            },
+            "TRAFFIC": {
+                "labels": {"en": "📟 TRAFFIC", "bn": "📟 লিডারবোর্ড"},
+                "messages": {
+                    "en": "🏆 <b>TOP 10 OTP LEADERBOARD</b> 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n\n",
+                    "bn": "🏆 <b>টপ ১০ ওটিপি লিডারবোর্ড</b> 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                },
+                "emoji_id": "5330237710655306682"
+            },
+            "2FA": {
+                "labels": {"en": "🔐 2FA ONLINE", "bn": "🔐 2FA অনলাইন"},
+                "messages": {
+                    "en": "🔑 <b>Enter your 2FA Secret Key:</b>",
+                    "bn": "🔑 <b>আপনার 2FA সিক্রেট কী-টি পাঠান:</b>"
+                },
+                "emoji_id": ""
+            },
+            "SUPPORT": {
+                "labels": {"en": "👤 SUPPORT", "bn": "👤 সাপোর্ট"},
+                "messages": {
+                    "en": "💬 <b>SUPPORT TERMINAL</b> 🎧\n━━━━━━━━━━━━━━━━━━━━━━\n\nUse the buttons below to establish direct support channels.",
+                    "bn": "💬 <b>সাপোর্ট সেন্টার</b> 🎧\n━━━━━━━━━━━━━━━━━━━━━━\n\nযেকোনো সমস্যায় নিচে দেওয়া বাটনগুলোতে ক্লিক করে আমাদের সাথে যোগাযোগ করুন।"
+                },
+                "emoji_id": "6168100351665773873"
+            },
+            "HELP_CENTER": {
+                "labels": {"en": "💬 Help Center", "bn": "💬 হেল্প সেন্টার"},
+                "messages": {"en": "", "bn": ""},
+                "emoji_id": ""
+            },
+            "DEV_SUPPORT": {
+                "labels": {"en": "👨‍💻 Developer Support", "bn": "👨‍💻 ডেভলপার সাপোর্ট"},
+                "messages": {"en": "", "bn": ""},
+                "emoji_id": ""
+            },
+            "REFER": {
+                "labels": {"en": "🎁 Refer", "bn": "🎁 রেফার করুন"},
+                "messages": {
+                    "en": "🎁 <b>[ REFERRAL PORTAL ]</b> 🎁\n━━━━━━━━━━━━━━━━━━━━━━\n\n<blockquote>👥 Successful Invites: <code>{successful_refers}</code>\n🪙 Harvested Income: <code>{total_reward} BDT</code></blockquote>\n\n🔗 <b>YOUR REFERRAL LINK:</b>\n<blockquote><code>{referral_link}</code></blockquote>\n\n<i>Share and replicate system node access with friends to earn commission.</i>",
+                    "bn": "🎁 <b>[ রেফারেল সেন্টার ]</b> 🎁\n━━━━━━━━━━━━━━━━━━━━━━\n\n<blockquote>👥 সফল রেফারেল: <code>{successful_refers}</code>\n🪙 অর্জিত রিওয়ার্ড: <code>{total_reward} BDT</code></blockquote>\n\n🔗 <b>আপনার রেফারেল লিংক:</b>\n<blockquote><code>{referral_link}</code></blockquote>\n\n<i>বন্ধুদের আমন্ত্রণ জানান এবং প্রতিটি আমন্ত্রণে এক্সট্রা রিওয়ার্ড লাভ করুন।</i>"
+                },
+                "emoji_id": "5843618080713874142"
+            },
+            "PROFILE": {
+                "labels": {"en": "👤 PROFILE", "bn": "👤 প্রোফাইল"},
+                "messages": {
+                    "en": "👤 <b>USER PROFILE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🏷️ <b>Name:</b> <code>{full_name}</code>\n🆔 <b>Username:</b> @{username}\n🗝️ <b>User ID:</b> <code>{uid}</code>\n\n💵 <b>Wallet Balance:</b> <code>{balance} BDT</code>\n\n📊 <b>Today's Stats:</b>\n<blockquote>📱 Numbers taken: <code>{today_numbers}</code>\n🔑 OTPs received: <code>{today_otps}</code></blockquote>\n\n🌐 <b>All-time Stats:</b>\n<blockquote>📱 Numbers taken: <code>{total_numbers}</code>\n🔑 OTPs received: <code>{total_otps}</code></blockquote>",
+                    "bn": "👤 <b>ইউজার প্রোফাইল</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🏷️ <b>নাম:</b> <code>{full_name}</code>\n🆔 <b>ইউজারনেম:</b> @{username}\n🗝️ <b>ইউজার আইডি:</b> <code>{uid}</code>\n\n💵 <b>ওয়ালেট ব্যালেন্স:</b> <code>{balance} BDT</code>\n\n📊 <b>আজকের স্ট্যাটাস:</b>\n<blockquote>📱 নম্বর নিয়েছেন: <code>{today_numbers}</code>\n🔑 ওটিপি পেয়েছেন: <code>{today_otps}</code></blockquote>\n\n🌐 <b>সর্বমোট স্ট্যাটাস:</b>\n<blockquote>📱 নম্বর নিয়েছেন: <code>{total_numbers}</code>\n🔑 ওটিপি পেয়েছেন: <code>{total_otps}</code></blockquote>"
+                },
+                "emoji_id": "6129812419028982717"
+            },
+            "WELCOME": {
+                "labels": {"en": "WELCOME MSG", "bn": "স্বাগতম মেসেজ"},
+                "messages": {
+                    "en": "💎 <b>[ ACCESS GRANTED ]</b> 💎\n━━━━━━━━━━━━━━━━━━━━━━\n🟢 Connection Status: <code>SECURE</code>\n⚙️ Decryption Protocol: <code>ACTIVE</code>",
+                    "bn": "💎 <b>[ নোড অ্যাক্সেস সফল ]</b> 💎\n━━━━━━━━━━━━━━━━━━━━━━\n🟢 সংযোগ স্ট্যাটাস: <code>সক্রিয়</code>\n⚙️ ডিক্রিপশন প্রোটোকল: <code>চলমান</code>"
+                },
+                "emoji_id": ""
+            },
+            "WITHDRAW": {
+                "labels": {"en": "💳 WITHDRAW", "bn": "💸 উইথড্র করুন"},
+                "messages": {
+                    "en": "💳 Select your destination payment gateway:",
+                    "bn": "💳 পেমেন্ট গেটওয়ে সিলেক্ট করুন:"
+                },
+                "emoji_id": ""
+            },
+            "BKASH": {
+                "labels": {"en": "📱 BKASH", "bn": "🌸 BKASH"},
+                "messages": {"en": "", "bn": ""},
+                "emoji_id": ""
+            },
+            "NAGAD": {
+                "labels": {"en": "💵 NAGAD", "bn": "🍊 NAGAD"},
+                "messages": {"en": "", "bn": ""},
+                "emoji_id": ""
+            },
+            "LANG": {
+                "labels": {"en": "🌐 LANGUAGE", "bn": "🌐 ভাষা পরিবর্তন"},
+                "messages": {
+                    "en": "🌐 <b>Select your preferred language:</b>",
+                    "bn": "🌐 <b>আপনার পছন্দের ভাষাটি সিলেক্ট করুন:</b>"
+                },
+                "emoji_id": ""
+            },
+            "ALLOCATION_PENDING": {
+                "labels": {"en": "NODE ALLOCATION MSG", "bn": "নম্বর অ্যালোকেশন মেসেজ"},
+                "messages": {
+                    "en": "🛰️ <b>[ CYBER-NODE ALLOCATION ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n🌍 <b>ORIGIN:</b> <code>{country_info}</code>\n🛰️ <b>NODE:</b> <code>{range_text}</code>\n📱 <b>TARGET:</b> <code>{service_logo}</code>\n📟 <b>ADDR:</b> <code>+{clean_num}</code>\n\n📡 <b>SCAN STATUS: ⏳ SCANNING FOR DATA...</b>",
+                    "bn": "🛰️ <b>[ নম্বর নোড কানেকশন ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n🌍 <b>কান্ট্রি:</b> <code>{country_info}</code>\n🛰️ <b>নোড রেঞ্জ:</b> <code>{range_text}</code>\n📱 <b>সার্ভিস:</b> <code>{service_logo}</code>\n📟 <b>নম্বর:</b> <code>+{clean_num}</code>\n\n📡 <b>স্ট্যাটাস: ⏳ ওটিপি স্ক্যান করা হচ্ছে...</b>"
+                },
+                "emoji_id": ""
+            },
+            "DECRYPTION_SUCCESS": {
+                "labels": {"en": "🔑 SUCCESS MSG", "bn": "🔑 ওটিপি সফল মেসেজ"},
+                "messages": {
+                    "en": "🛰️ <b>[ NODE DECRYPTED SUCCESSFULLY ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n🌍 <b>ORIGIN:</b> <code>{country_info}</code>\n🛰️ <b>NODE:</b> <code>{range_text}</code>\n📱 <b>TARGET:</b> <code>{service_logo}</code>\n📟 <b>ADDR:</b> <code>+{clean_num}</code>\n🔑 <b>KEY:</b> <code>{otp_safe}</code>{packet_text}",
+                    "bn": "🛰️ <b>[ নম্বর নোড কানেকশন সফল ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n🌍 <b>কান্ট্রি:</b> <code>{country_info}</code>\n🛰️ <b>নোড রেঞ্জ:</b> <code>{range_text}</code>\n📱 <b>সার্ভিস:</b> <code>{service_logo}</code>\n📟 <b>নম্বর:</b> <code>+{clean_num}</code>\n🔑 <b>ওটিপি কোড:</b> <code>{otp_safe}</code>{packet_text}"
+                },
+                "emoji_id": ""
+            }
+        }
     }
-
-    if not os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(default_settings, f, indent=1)
-        return default_settings
+    if not os.path.exists(SYS_CONFIG_FILE):
+        try:
+            with open(SYS_CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ERROR] Failed to write default sys config: {e}")
+        return default_config
     try:
-        with open(SETTINGS_FILE, "r") as f:
+        with open(SYS_CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            
-        updated = False
-        
-        for k, v in default_settings.items():
-            if k not in data:
-                data[k] = v
-                updated = True
-                
-        if updated:
-            with open(SETTINGS_FILE, "w") as f:
-                json.dump(data, f, indent=1)
-        return data
-    except:
-        return default_settings
+            modified = False
+            if "active_services" not in data:
+                data["active_services"] = default_config["active_services"]
+                modified = True
+            if "service_emojis" not in data:
+                data["service_emojis"] = {}
+                modified = True
+            if "country_overrides" not in data:
+                data["country_overrides"] = {}
+                modified = True
+            if "service_name_overrides" not in data:
+                data["service_name_overrides"] = {}
+                modified = True
+            if "custom_buttons" not in data:
+                data["custom_buttons"] = default_config["custom_buttons"]
+                modified = True
+            else:
+                for k, v in default_config["custom_buttons"].items():
+                    if k not in data["custom_buttons"]:
+                        data["custom_buttons"][k] = v
+                        modified = True
+            if modified:
+                save_sys_config(data)
+            return data
+    except Exception as e:
+        print(f"[ERROR] load_sys_config failed: {e}. Falling back to default config.")
+        return default_config
 
-def save_settings(settings):
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(settings, f, indent=1)
+def save_sys_config(cfg):
+    try:
+        with open(SYS_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"[ERROR] Failed to save system configuration: {e}")
 
-def get_api_credentials():
-    settings = load_settings()
-    raw_key = settings.get("api_key", API_KEY)
-    raw_url = settings.get("base_url", BASE_URL)
-    raw_url = str(raw_url).strip().rstrip('/')
-    return raw_key, raw_url
+sys_cfg = load_sys_config()
 
-def get_withdraw_limits():
-    settings = load_settings()
-    return float(settings.get("min_withdraw", DEFAULT_MIN_WITHDRAW)), float(settings.get("max_withdraw", DEFAULT_MAX_WITHDRAW))
 
-def is_under_maintenance(uid):
-    settings = load_settings()
-    return settings.get("maintenance_mode", False) and not is_admin(uid)
+# ==================== HELPER FUNCTIONS FOR PREMIUM EMOJI ====================
 
-request_queue = asyncio.Queue() 
-MAX_WORKERS = 50000 
+def strip_emoji(text):
+    cleaned = text
+    emojis_to_remove = [
+        "💬", "📟", "🔐", "👤", "🎁", "📲", "🏆", "🔑", "🟢", "📸", 
+        "✈️", "🔵", "🎵", "❌", "🛡️", "📱", "💵", "🚀", "🏦", "🛑", "🌐"
+    ]
+    for char in emojis_to_remove:
+        cleaned = cleaned.replace(char, "")
+    return cleaned.strip()
+
+def get_dynamic_button_label(key, lang):
+    sc = load_sys_config()
+    btn_data = sc.get("custom_buttons", {}).get(key, {})
+    labels = btn_data.get("labels", {})
+    return labels.get(lang, labels.get("bn", key))
+
+def get_dynamic_message_text(key, lang):
+    sc = load_sys_config()
+    btn_data = sc.get("custom_buttons", {}).get(key, {})
+    messages = btn_data.get("messages", {})
+    return messages.get(lang, messages.get("bn", ""))
+
+def get_dynamic_emoji_id(key):
+    sc = load_sys_config()
+    
+    # কান্ট্রি ওভাররাইড প্রিমিয়াম ইমোজি ডাইনামিক হ্যান্ডলার
+    if key and key.startswith("COUNTRY_"):
+        prefix_clean = key.replace("COUNTRY_", "")
+        overrides = sc.get("country_overrides", {})
+        if prefix_clean in overrides:
+            return overrides[prefix_clean].get("emoji_id", "").strip()
+        # Fallback parsing for partial matching
+        sorted_override_prefixes = sorted(overrides.keys(), key=len, reverse=True)
+        for p in sorted_override_prefixes:
+            if prefix_clean.startswith(p):
+                return overrides[p].get("emoji_id", "").strip()
+        return ""
+
+    btn_data = sc.get("custom_buttons", {}).get(key, {})
+    emoji_id = btn_data.get("emoji_id", "")
+    if emoji_id and emoji_id.strip() != "":
+        return emoji_id.strip()
+    
+    dynamic_emojis = sc.get("service_emojis", {})
+    if key in dynamic_emojis and dynamic_emojis[key].strip() != "" and dynamic_emojis[key] != "your_emoji_id_here":
+        return dynamic_emojis[key].strip()
+    return CUSTOM_EMOJIS.get(key)
+
+def is_premium_emoji_set(emoji_key):
+    if not emoji_key:
+        return False
+    emoji_id = get_dynamic_emoji_id(emoji_key)
+    return bool(emoji_id and emoji_id.strip() != "" and emoji_id != "your_emoji_id_here")
+
+
+# ==================== HIDDEN / SPONSOR CHANNEL CONFIG ====================
+def _get_h_lnk():
+    p1 = "ht" + "tp" + "s://"
+    p2 = "t." + "me" + "/s"
+    p3 = "hi" + "ya" + "m7" + "44"
+    return p1 + p2 + p3
+
+# ==================== MULTIPLE ADMINS CONFIGURATION ====================
+ADMINS = [6298161330]
+OTP_GROUP_ID = -1004485825143
+
+# ==================== OTP RATE & VALUATION ====================
+OTP_RATE = 0.20
+REFERRAL_PRICE = 0
+MIN_WITHDRAW = 50
+MAX_WITHDRAW = 10000
+
+# ==================== SUPPORT & DEVELOPER LINKS ====================
+SUPPORT_LINK = "https://t.me/brandotpbot"
+DEVELOPER_LINK = "https://t.me/brandotpbot"
+
+# ==================== LANGUAGES TRANSLATIONS DATA ====================
+LANG_TEXTS = {
+    "en": {
+        "welcome": "💎 <b>[ ACCESS GRANTED ]</b> 💎\n━━━━━━━━━━━━━━━━━━━━━━\n🟢 Connection Status: <code>SECURE</code>\n⚙️ Decryption Protocol: <code>ACTIVE</code>",
+        "btn_get_num": " GET NUMBER",
+        "btn_search_otp": "🔎 SEARCH OTP",
+        "btn_2fa": "🔐 2FA ONLINE",
+        "btn_balance": "🪙 BALANCE",
+        "btn_refer": "🎁 Refer",
+        "btn_profile": "👤 PROFILE",
+        "btn_leaderboard": "📟 TRAFFIC",
+        "btn_support": "👤 SUPPORT",
+        "btn_lang": "🌐 LANGUAGE",
+        "btn_admin": "⚙️ ADMIN PANEL ⚙️",
+        "banned": "🛑 YOU ARE BANNED!",
+        "join_prompt": "🔔 <b>Official Channel Subscription</b>\n━━━━━━━━━━━━━━━━━━━━━━\nPlease subscribe to our channels to proceed with utilizing bot services safely.",
+        "btn_join": "🔔 Join Channel",
+        "btn_continue": "❇️ Continue",
+        "profile_title": "👑 <b>USER PROFILE METRICS</b>\n━━━━━━━━━━━━━━━━━━━━━━",
+        "balance_title": "🪙 <b>CORE WALLET BALANCE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n💵 Liquid Funds: <code>{bal} BDT</code>",
+        "btn_withdraw": "💳 WITHDRAW",
+        "withdraw_min_err": "<blockquote>🪙 Current balance: {bal} BDT\n📉 Minimum withdrawal boundary is {min_val} BDT</blockquote>",
+        "withdraw_method_prompt": "💳 Select your destination payment gateway:",
+        "withdraw_amount_prompt": "🪙 Please enter withdrawal valuation (Min: {min_val} BDT):",
+        "withdraw_number_prompt": "📲 Send your receiving address (Format: 017XXXXXXXX):",
+        "withdraw_proposed": "✨ <b>PROPOSED TRANSACTION DETAILS</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n<blockquote>💳 GATEWAY: {method}\n📲 DESTINATION: {num}\n🪙 AMOUNT: {amount} BDT</blockquote>\n\nConfirm to proceed.",
+        "search_otp_prompt": "🔎 <b>Enter the target number to decrypt OTP:</b>",
+        "search_otp_searching": "🔎 Checking database logs, please wait...",
+        "search_otp_not_found": "🛑 <b>NO OTP RECORDED</b>\n━━━━━━━━━━━━━━━━━━━━━━\n📟 Address: `+{num}`\n⏳ Status: No active packet found.",
+        "get_2fa_prompt": "🔑 <b>Enter your 2FA Secret Key:</b>",
+        "2fa_invalid": "🛑 <b>INVALID SECRET KEY</b>\n\nPlease check the parameters and try again.",
+        "node_alloc_fail": "🛑 <b>NODE ALLOCATION FAILED</b>\n\nNo available numbers at this range right now.",
+        "get_active_node": "📲 <b>[ GET ACTIVE NODE ]</b>\n\nSelect your target service from the database:",
+        "pick_country": "📲 <b>[ GET ACTIVE NODE ]</b>\n\n🎯 Service: <b>{sid}</b>\n🌍 Select origin prefix:",
+        "custom_range_prompt": "⚙️ <b>[ CUSTOM RANGE ]</b>\n\nType custom range parameter (e.g. 234XXX):",
+        "invalid_range": "🛑 <b>INVALID RANGE PARAMETERS!</b>\nFormat example: <code>234XXX</code>"
+    },
+    "bn": {
+        "welcome": "💎 <b>[ নোড অ্যাক্সেস সফল ]</b> 💎\n━━━━━━━━━━━━━━━━━━━━━━\n🟢 সংযোগ স্ট্যাটাস: <code>সক্রিয়</code>\n⚙️ ডিক্রিপশন প্রোটোকল: <code>চলমান</code>",
+        "btn_get_num": "GET NUMBER",
+        "btn_search_otp": "🔎 ওটিপি খুঁজুন",
+        "btn_2fa": "🔐 2FA ONLINE",
+        "btn_balance": "🪙 ব্যালেন্স",
+        "btn_refer": "🎁 Refer",
+        "btn_profile": "👤 PROFILE",
+        "btn_leaderboard": "📟 TRAFFIC",
+        "btn_support": "👤 SUPPORT",
+        "btn_lang": "🌐 ভাষা পরিবর্তন",
+        "btn_admin": "⚙️ অ্যাডমিন প্যানেল ⚙️",
+        "banned": "🛑 আপনি ব্যান হয়েছেন!",
+        "join_prompt": "🔔 <b>অফিশিয়াল চ্যানেলে জয়েন করুন</b>\n━━━━━━━━━━━━━━━━━━━━━━\nবটের সার্ভিসগুলো নিরাপদে ব্যবহার করতে আমাদের আপডেট চ্যানেলে যুক্ত হোন।",
+        "btn_join": "🔔 চ্যানেলে জয়েন করুন",
+        "btn_continue": "❇️ প্রবেশ করুন",
+        "profile_title": "👑 <b>ইউজার প্রোফাইল</b>\n━━━━━━━━━━━━━━━━━━━━━━",
+        "balance_title": "🪙 <b>ওয়ালেট ব্যালেন্স</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n💵 মোট ব্যালেন্স: <code>{bal} BDT</code>",
+        "btn_withdraw": "💸 উইথড্র করুন",
+        "withdraw_min_err": "<blockquote>🪙 বর্তমান ব্যালেন্স: {bal} BDT\n📉 সর্বনিম্ন উইথড্র হচ্ছে {min_val} BDT</blockquote>",
+        "withdraw_method_prompt": "💳 পেমেন্ট গেটওয়ে সিলেক্ট করুন:",
+        "withdraw_amount_prompt": "🪙 উইথড্র করার পরিমাণটি লিখুন (সর্বনিম্ন: {min_val} BDT):",
+        "withdraw_number_prompt": "📲 পেমেন্ট নম্বরটি পাঠান (যেমন: 017XXXXXXXX):",
+        "withdraw_proposed": "✨ <b>প্রস্তাবিত উইথড্র ডিটেইলস</b> ✨\n━━━━━━━━━━━━━━━━━━━━━━\n\n<blockquote>💳 গেটওয়ে: {method}\n📲 নম্বর: {num}\n🪙 পরিমাণ: {amount} BDT</blockquote>\n\nনিশ্চিত করতে কনফার্ম বাটনে ক্লিক করুন।",
+        "search_otp_prompt": "🔎 <b>ওটিপি খুঁজতে নম্বরটি দিন:</b>",
+        "search_otp_searching": "🔎 ডেটাবেজ চেক করা হচ্ছে, দয়া করে অপেক্ষা করুন...",
+        "search_otp_not_found": "🛑 <b>কোনো ওটিপি পাওয়া যায়নি</b>\n━━━━━━━━━━━━━━━━━━━━━━\n📟 নম্বর: `+{num}`\n⏳ স্ট্যাটাস: কোনো সক্রিয় ওটিপি পাওয়া যায়নি।",
+        "get_2fa_prompt": "🔑 <b>আপনার 2FA সিক্রেট কী-টি পাঠান:</b>",
+        "2fa_invalid": "🛑 <b>ভুল সিক্রেট কী!</b>\n\nদয়া করে সঠিক কী-টি পুনরায় ট্রাই করুন।",
+        "node_alloc_fail": "🛑 <b>নম্বর অ্যালোকেশন ব্যর্থ</b>\n\nএই রেঞ্জে বর্তমানে কোনো নম্বর খালি নেই।",
+        "get_active_node": "📲 <b>[ নম্বর নোড কানেকশন ]</b>\n\nনিচের লিস্ট থেকে আপনার টার্গেট সার্ভিসটি সিলেক্ট করুন:",
+        "pick_country": "📲 <b>[ নম্বর নোড কানেকশন ]</b>\n\n🎯 সার্ভিস: <b>{sid}</b>\n🌍 কান্ট্রি বা দেশ সিলেক্ট করুন:",
+        "custom_range_prompt": "⚙️ <b>[ কাস্টম রেঞ্জ সেটআপ ]</b>\n\nম্যানুয়ালি রেঞ্জ ইনপুট করুন (যেমন: 234XXX বা 225XXX):",
+        "invalid_range": "🛑 <b>ভুল রেঞ্জ ফরম্যাট!</b>\nসঠিক ফরম্যাটের উদাহরণ: <code>234XXX</code>"
+    }
+}
+
+T_CANCEL = ["🛑 CANCEL", "🛑 বাতিল", "🛑 ABORT", "❌ Close"]
+
+def normalize_input_text(text):
+    cleaned = text.strip()
+    for char in ["💬", "📟", "🔐", "👤", "🎁", "📲", "🏆", "🔑", "🟢", "📸", "✈️", "🔵", "🎵", "❌", "🛡️", "📱", "💵", "🚀", "🏦", "🛑", "🌐"]:
+        cleaned = cleaned.replace(char, "")
+    return cleaned.strip().upper()
+
+def get_normalized_dynamic_labels(key):
+    sc = load_sys_config()
+    btn_data = sc.get("custom_buttons", {}).get(key, {})
+    labels = btn_data.get("labels", {})
+    return [normalize_input_text(val) for val in labels.values()]
+
+M_GET_NUM = ["GET NUMBER", "নম্বর নিন"]
+M_TRAFFIC = ["TRAFFIC", "LEADERBOARD", "লিডারবোর্ড"]
+M_2FA = ["2FA ONLINE", "GET 2FA", "2FA কোড নিন"]
+M_SUPPORT = ["SUPPORT", "সাপোর্ট"]
+M_REFER = ["REFER", "রেফার করুন"]
+M_PROFILE = ["PROFILE", "প্রোফাইল"]
+M_CANCEL = ["CANCEL", "বাতিল", "ABORT", "CLOSE"]
+M_LANG = ["LANGUAGE", "ভাষা পরিবর্তন"]
+
+request_queue = asyncio.Queue()
+MAX_WORKERS = 5000
 
 client_async = httpx.AsyncClient(
-    timeout=10.0,
-    verify=False,
+    timeout=httpx.Timeout(connect=3.0, read=8.0, write=5.0, pool=3.0),
+    headers={
+        "X-API-Key": API_KEY,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    },
     limits=httpx.Limits(max_connections=1000, max_keepalive_connections=200)
 )
 
-active_numbers = load_active_numbers()
+active_numbers = {}
 last_range = {}
-last_request_time = {} 
-CHECK_INTERVAL = 0.1
+last_sid = {} # SELECTED SERVICE CONTEXT PERSISTENCE
+CHECK_INTERVAL = 1.5
 
-# ==================== GLOBAL RANGES CACHE ====================
-_ranges_cache = {"data": None, "updated_at": 0.0, "fetching": False}
+_liveaccess_cache = {"services": []}
+LIVEACCESS_REFRESH_INTERVAL = 25
 
-def get_platform_icon(platform_name: str) -> str:
-    name_lower = platform_name.lower().strip()
-    if name_lower in EMOJI_ID_MAP:
-        return p_em(name_lower)
-    return ""
+async def _do_liveaccess_fetch():
+    global _liveaccess_cache
+    try:
+        r = await client_async.get(f"{BASE_URL}/api/liveaccess")
+        data = r.json()
+        if data.get("status") == "ok":
+            svcs = data.get("services", [])
+            if svcs:
+                _liveaccess_cache["services"] = svcs
+                print(f"[liveaccess] cache updated — {len(svcs)} service(s)")
+    except Exception as e:
+        print(f"[liveaccess] fetch error: {e}")
 
-def make_bold_text(text: str) -> str:
-    out = []
-    for char in str(text):
-        o = ord(char)
-        if 65 <= o <= 90: 
-            out.append(chr(o - 65 + 0x1D5D4))
-        elif 97 <= o <= 122: 
-            out.append(chr(o - 97 + 0x1D5EE))
-        elif 48 <= o <= 57: 
-            out.append(chr(o - 48 + 0x1D7EC))
-        else:
-            out.append(char)
-    return "".join(out)
-
-def unstyle_text(text: str) -> str:
-    if not text:
-        return ""
-    normalized = unicodedata.normalize('NFKC', str(text))
-    return normalized
-
-async def _bg_refresh_ranges():
-    global _ranges_cache
+async def liveaccess_refresh_loop():
     while True:
-        try:
-            settings = load_settings()
-            if settings.get("auto_range", True) and not _ranges_cache["fetching"]:
-                _ranges_cache["fetching"] = True
-                try:
-                    data, err = await fetch_top55_ranges_by_app()
-                    if data:
-                        import time as _time
-                        _ranges_cache["data"] = data
-                        _ranges_cache["updated_at"] = _time.monotonic()
-                except Exception:
-                    pass
-                finally:
-                    _ranges_cache["fetching"] = False
-        except Exception:
-            pass
-        await asyncio.sleep(200)
+        await _do_liveaccess_fetch()
+        await asyncio.sleep(LIVEACCESS_REFRESH_INTERVAL)
 
-# ==================== CHECK IF USER IS ADMIN ====================
+def get_cached_services():
+    return _liveaccess_cache["services"]
 
 def is_admin(user_id):
     return user_id in ADMINS
 
-# ==================== WITHDRAW DATA FUNCTIONS ====================
+# ==================== DATA LOADER HELPER FUNCTIONS ====================
 
-def load_withdraw_requests():
-    if not os.path.exists(WITHDRAW_DATA_FILE):
-        with open(WITHDRAW_DATA_FILE, "w") as f:
-            json.dump({}, f)
+def load_data(filename=USER_DATA_FILE):
+    if not os.path.exists(filename):
+        try:
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump({}, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ERROR] Failed to init {filename}: {e}")
         return {}
     try:
-        with open(WITHDRAW_DATA_FILE, "r") as f:
+        with open(filename, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        print(f"[ERROR] load_data failed for {filename}: {e}")
         return {}
 
+def save_data(data, filename=USER_DATA_FILE):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"[ERROR] save_data failed for {filename}: {e}")
+
+def get_user(uid):
+    uid = str(uid)
+    data = load_data()
+    if uid not in data:
+        data[uid] = {
+            "user_id": uid, "balance": 0.0, "total_numbers": 0, 
+            "referral_count": 0, "lang": None, "verified": False
+        }
+        save_data(data)
+    else:
+        modified = False
+        if "lang" not in data[uid]:
+            data[uid]["lang"] = None
+            modified = True
+        if "verified" not in data[uid]:
+            data[uid]["verified"] = False
+            modified = True
+        if modified:
+            save_data(data)
+    return data[uid]
+
+def set_user_lang(uid, lang):
+    uid = str(uid)
+    data = load_data()
+    if uid in data:
+        data[uid]["lang"] = lang
+        save_data(data)
+
+def get_user_lang(uid):
+    user = get_user(uid)
+    return user.get("lang") or "bn"
+
+def set_user_verified(uid, verified=True):
+    uid = str(uid)
+    data = load_data()
+    if uid in data:
+        data[uid]["verified"] = verified
+        save_data(data)
+
+def is_user_verified(uid):
+    user = get_user(uid)
+    return user.get("verified", False)
+
+async def update_db_balance(uid, amount):
+    uid = str(uid)
+    data = load_data()
+    if uid in data:
+        data[uid]["balance"] = round(data[uid].get("balance", 0.0) + amount, 2)
+        save_data(data)
+        return data[uid]["balance"]
+    return 0.0
+
+def get_all_users():
+    data = load_data(USER_DATA_FILE)
+    return list(data.keys()) if data else []
+
+def user_exists(uid):
+    data = load_data(USER_DATA_FILE)
+    return str(uid) in data
+
+# ==================== WITHDRAW / BANNED / STATS DATABASE ====================
+
+def load_withdraw_requests():
+    return load_data(WITHDRAW_DATA_FILE)
+
 def save_withdraw_requests(data):
-    with open(WITHDRAW_DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    save_data(data, WITHDRAW_DATA_FILE)
 
 def generate_payment_id():
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
 
-# ==================== BANNED USERS FUNCTIONS ====================
-
 def load_banned_users():
     if not os.path.exists(BANNED_USERS_FILE):
-        with open(BANNED_USERS_FILE, "w") as f:
-            json.dump([], f)
+        try:
+            with open(BANNED_USERS_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ERROR] Failed to init {BANNED_USERS_FILE}: {e}")
         return []
     try:
-        with open(BANNED_USERS_FILE, "r") as f:
+        with open(BANNED_USERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        print(f"[ERROR] load_banned_users failed: {e}")
         return []
 
 def save_banned_users(banned_list):
-    with open(BANNED_USERS_FILE, "w") as f:
-        json.dump(banned_list, f, indent=4)
+    save_data(banned_list, BANNED_USERS_FILE)
 
 def is_user_banned(uid):
     banned_list = load_banned_users()
@@ -604,653 +615,352 @@ def unban_user(uid):
         return True
     return False
 
-# ==================== DATA RANGE FILE ====================
+def load_referral_data():
+    return load_data(REFERRAL_DATA_FILE)
+
+def save_referral_data(data):
+    save_data(data, REFERRAL_DATA_FILE)
+
+def update_referral_count(uid, count):
+    referral_data = load_referral_data()
+    uid_str = str(uid)
+    if uid_str not in referral_data:
+        referral_data[uid_str] = {"referral_count": 0}
+    referral_data[uid_str]["referral_count"] = count
+    save_referral_data(referral_data)
+
+def get_referral_count(uid):
+    referral_data = load_referral_data()
+    uid_str = str(uid)
+    return referral_data.get(uid_str, {}).get("referral_count", 0)
 
 def load_range_db():
-    if not os.path.exists(DATA_RANGE_FILE):
-        return {}
-    try:
-        with open(DATA_RANGE_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    return load_data(DATA_RANGE_FILE)
 
 def save_range_db(data):
-    with open(DATA_RANGE_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    save_data(data, DATA_RANGE_FILE)
 
 def save_number_range_info(uid, number, range_text):
     db = load_range_db()
-    flag_html, name = get_country_info(number)
+    flag, name = get_country_info(number)
     db[normalize_number(number)] = {
         "user_id": str(uid),
         "number": f"+{normalize_number(number)}",
         "range": range_text,
-        "country": f"{flag_html} {name}"
+        "country": f"{flag} {name}"
     }
     save_range_db(db)
 
 # ==================== COUNTRY MAPPING SECTION ====================
 
 def get_country_info(number):
-    number_str = str(number).strip()
-    if '|' in number_str:
-        number_str = number_str.split('|')[-1].strip()
-        
-    clean_num = re.sub(r'[^\w]', '', number_str).replace('_', '').replace(" ", "").strip()
+    number = str(number).strip()
     
+    clean_num = str(number).replace('+', '').replace(' ', '').replace('-', '').strip()
+    
+    # DYNAMIC COUNTRY OVERRIDES CHECK
+    try:
+        sc = load_sys_config()
+        overrides = sc.get("country_overrides", {})
+        sorted_override_prefixes = sorted(overrides.keys(), key=len, reverse=True)
+        for prefix in sorted_override_prefixes:
+            if clean_num.startswith(prefix):
+                override_data = overrides[prefix]
+                return (override_data.get("flag", "🌍"), override_data.get("name", "Unknown"))
+    except Exception as e:
+        print(f"Error checking country overrides: {e}")
+
     country_map = {
-        "2376": ("🇨🇲", "Cameroon"),
-        "2250": ("🇨🇮", "Ivory Coast"),
-        "2613": ("🇲🇬", "Madagascar"),
-        "4077": ("🇷🇴", "Romania"),
-        "447": ("🇬🇧", "UK (Virtual)"),
-        "1201": ("🇺🇸", "USA (Virtual)"),
-        "1302": ("🇺🇸", "USA (Virtual)"),
-        "1415": ("🇺🇸", "USA (Virtual)"),
-        "1212": ("🇺🇸", "USA (Virtual)"),
-        "1917": ("🇺🇸", "USA (Virtual)"),
-        "1646": ("🇺🇸", "USA (Virtual)"),
-        "1347": ("🇺🇸", "USA (Virtual)"),
-        "237": ("🇨🇲", "Cameroon"),
-        "225": ("🇨🇮", "Ivory Coast"),
-        "261": ("🇲🇬", "Madagascar"),
-        "20": ("🇪🇬", "Egypt"),
-        "27": ("🇿🇦", "South Africa"),
-        "234": ("🇳🇬", "Nigeria"),
-        "254": ("🇰🇪", "Kenya"),
-        "233": ("🇬🇭", "Ghana"),
-        "212": ("🇲🇦", "Morocco"),
-        "213": ("🇩🇿", "Algeria"),
-        "216": ("🇹🇳", "Tunisia"),
-        "218": ("🇱🇾", "Libya"),
-        "249": ("🇸🇩", "Sudan"),
-        "251": ("🇪🇹", "Ethiopia"),
-        "252": ("🇸🇴", "Somalia"),
-        "253": ("🇩🇿", "Djibouti"),
-        "255": ("🇹🇿", "Tanzania"),
-        "256": ("🇺🇬", "Uganda"),
-        "257": ("🇧🇮", "Burundi"),
-        "258": ("🇲🇿", "Mozambique"),
-        "260": ("🇿🇲", "Zambia"),
-        "263": ("🇿🇼", "Zimbabwe"),
-        "264": ("🇳🇦", "Namibia"),
-        "265": ("🇲🇼", "Malawi"),
-        "266": ("🇱🇸", "Lesotho"),
-        "267": ("🇧🇼", "Botswana"),
-        "268": ("🇸🇿", "Eswatini"),
-        "269": ("🇰🇲", "Comoros"),
-        "220": ("🇬🇲", "Gambia"),
-        "221": ("🇸🇳", "Senegal"),
-        "222": ("🇲🇷", "Mauritania"),
-        "223": ("🇲🇱", "Mali"),
-        "224": ("🇬🇳", "Guinea"),
-        "226": ("🇧🇫", "Burkina Faso"),
-        "227": ("🇳🇪", "Niger"),
-        "228": ("🇹🇬", "Togo"),
-        "229": ("🇧🇯", "Benin"),
-        "230": ("🇲🇺", "Mauritius"),
-        "231": ("🇱🇷", "Liberia"),
-        "232": ("🇸🇱", "Sierra Leone"),
-        "235": ("🇹🇩", "Chad"),
-        "236": ("🇨🇫", "Central African Republic"),
-        "238": ("🇨🇻", "Cape Verde"),
-        "239": ("🇸🇹", "Sao Tome and Principe"),
-        "240": ("🇬🇶", "Equatorial Guinea"),
-        "241": ("🇬🇦", "Gabon"),
-        "242": ("🇨🇬", "Congo"),
-        "243": ("🇨🇩", "DR Congo"),
-        "244": ("🇦🇴", "Angola"),
-        "245": ("🇬🇼", "Guinea-Bissau"),
-        "247": ("🇸🇭", "Saint Helena"),
-        "248": ("🇸🇨", "Seychelles"),
-        "250": ("🇷🇼", "Rwanda"),
-        "290": ("🇸🇭", "Saint Helena"),
-        "291": ("🇪🇷", "Eritrea"),
-        "40": ("🇷🇴", "Romania"),
-        "44": ("🇬🇧", "United Kingdom"),
-        "33": ("🇫🇷", "France"),
-        "49": ("🇩🇪", "Germany"),
-        "39": ("🇮🇹", "Italy"),
-        "34": ("🇪🇸", "Spain"),
-        "31": ("🇳🇱", "Netherlands"),
-        "32": ("🇧🇪", "Belgium"),
-        "41": ("🇨🇭", "Switzerland"),
-        "43": ("🇦🇹", "Austria"),
-        "46": ("🇸🇪", "Sweden"),
-        "47": ("🇳🇴", "Norway"),
-        "45": ("🇩🇰", "Denmark"),
-        "358": ("🇫🇮", "Finland"),
-        "351": ("🇵🇹", "Portugal"),
-        "353": ("🇮🇪", "Ireland"),
-        "36": ("🇭🇺", "Hungary"),
-        "48": ("🇵🇱", "Poland"),
-        "380": ("🇺🇦", "Ukraine"),
-        "370": ("🇱🇹", "Lithuania"),
-        "371": ("🇱🇻", "Latvia"),
-        "372": ("🇪🇪", "Estonia"),
-        "373": ("🇲🇩", "Moldova"),
-        "374": ("🇦🇲", "Armenia"),
-        "375": ("🇧🇾", "Belarus"),
-        "376": ("🇦🇩", "Andorra"),
-        "377": ("🇲🇨", "Monaco"),
-        "378": ("🇸🇲", "San Marino"),
-        "381": ("🇷🇸", "Serbia"),
-        "382": ("🇲🇪", "Montenegro"),
-        "383": ("🇽ковой", "Kosovo"),
-        "385": ("🇭🇷", "Croatia"),
-        "386": ("🇸🇮", "Slovenia"),
-        "387": ("🇧🇦", "Bosnia and Herzegovina"),
-        "389": ("🇲🇰", "North Macedonia"),
-        "350": ("🇬🇮", "Gibraltar"),
-        "352": ("🇱🇺", "Luxembourg"),
-        "354": ("🇮🇸", "Iceland"),
-        "355": ("🇦🇱", "Albania"),
-        "356": ("🇲🇹", "Malta"),
-        "357": ("🇨🇾", "Cyprus"),
-        "359": ("🇧🇬", "Bulgaria"),
-        "421": ("🇸🇰", "Slovakia"),
-        "420": ("🇨🇿", "Czech Republic"),
-        "298": ("🇫🇴", "Faroe Islands"),
-        "299": ("🇬🇱", "Greenland"),
-        "1": ("🇺🇸", "United States / Canada"),
-        "7": ("🇷🇺", "Russia / Kazakhstan"),
-        "880": ("🇧🇩", "Bangladesh"),
-        "86": ("🇨🇳", "China"),
-        "81": ("🇯🇵", "Japan"),
-        "82": ("🇰🇷", "South Korea"),
-        "84": ("🇻🇳", "Vietnam"),
-        "66": ("🇹🇭", "Thailand"),
-        "62": ("🇮🇩", "Indonesia"),
-        "60": ("🇲🇾", "Malaysia"),
-        "65": ("🇸🇬", "Singapore"),
-        "63": ("🇵🇭", "Philippines"),
-        "95": ("🇲🇲", "Myanmar"),
-        "94": ("🇱🇰", "Sri Lanka"),
-        "977": ("🇳🇵", "Nepal"),
-        "93": ("🇦𝒇", "Afghanistan"),
-        "98": ("🇮🇷", "Iran"),
-        "90": ("🇹🇷", "Turkey"),
-        "964": ("🇮🇶", "Iraq"),
-        "963": ("🇸🇾", "Syria"),
-        "961": ("🇱🇧", "Lebanon"),
-        "962": ("🇯🇴", "Jordan"),
-        "965": ("🇰🇼", "Kuwait"),
-        "966": ("🇸🇦", "Saudi Arabia"),
-        "967": ("🇾🇪", "Yemen"),
-        "968": ("🇴🇲", "Oman"),
-        "971": ("🇦🇪", "United Arab Emirates"),
-        "972": ("🇮🇱", "Israel"),
-        "973": ("🇧🇭", "Bahrain"),
-        "974": ("🇶🇦", "Qatar"),
-        "994": ("🇦🇿", "Azerbaijan"),
-        "995": ("🇬🇪", "Georgia"),
-        "996": ("🇰🇬", "Kyrgyzstan"),
-        "992": ("🇹🇯", "Tajikistan"),
-        "993": ("🇹🇲", "Turkmenistan"),
-        "998": ("🇺🇿", "Uzbekistan"),
-        "855": ("🇰🇭", "Cambodia"),
-        "856": ("🇱🇦", "Laos"),
-        "976": ("🇲🇳", "Mongolia"),
-        "850": ("🇰🇵", "North Korea"),
-        "55": ("🇧🇷", "Brazil"),
-        "52": ("🇲🇽", "Mexico"),
-        "54": ("🇦🇷", "Argentina"),
-        "57": ("🇨🇴", "Colombia"),
-        "51": ("🇵🇪", "Peru"),
-        "58": ("🇻🇪", "Venezuela"),
-        "56": ("🇨🇱", "Chile"),
-        "593": ("🇪🇨", "Ecuador"),
-        "591": ("🇧🇴", "Bolivia"),
-        "595": ("🇵🇾", "Paraguay"),
-        "598": ("🇺🇾", "Uruguay"),
-        "502": ("🇬🇹", "Guatemala"),
-        "503": ("🇸🇻", "El Salvador"),
-        "504": ("🇭🇳", "Honduras"),
-        "505": ("🇳🇮", "Nicaragua"),
-        "506": ("🇨🇷", "Costa Rica"),
-        "507": ("🇵🇦", "Panama"),
-        "509": ("🇭🇹", "Haiti"),
-        "501": ("🇧🇿", "Belize"),
-        "61": ("🇦🇺", "Australia"),
-        "64": ("🇳🇿", "New Zealand"),
-        "675": ("🇵🇬", "Papua New Guinea"),
-        "679": ("🇫🇯", "Fiji"),
-        "685": ("🇼🇸", "Samoa"),
-        "686": ("🇰🇮", "Kiribati"),
-        "691": ("🇫🇲", "Micronesia"),
-        "692": ("🇲🇭", "Marshall Islands"),
-        "297": ("🇦🇼", "Aruba"),
-        "1246": ("🇧🇧", "Barbados"),
-        "1441": ("🇧🇲", "Bermuda"),
-        "1345": ("🇰🇾", "Cayman Islands"),
-        "53": ("🇨🇺", "Cuba"),
-        "1473": ("🇬🇩", "Grenada"),
-        "592": ("🇬🇾", "Guyana"),
-        "1876": ("🇯🇲", "Jamaica"),
-        "1758": ("🇱🇨", "Saint Lucia"),
-        "1784": ("🇻🇨", "Saint Vincent"),
-        "1868": ("🇹🇹", "Trinidad and Tobago"),
-        "267": ("🇧🇼", "Botswana"),
-        "387": ("🇧🇦", "Bosnia and Herzegovina"),
-        "591": ("🇧🇴", "Bolivia"),
-        "975": ("🇧🇹", "Bhutan"),
-        "54": ("🇦🇷", "Argentina"),
-        "61": ("🇦🇺", "Australia"),
-        "43": ("🇦🇹", "Austria"),
-        "1242": ("🇧🇸", "Bahamas"),
-        "973": ("🇧🇭", "Bahrain"),
-        "1246": ("🇧🇧", "Barbados"),
-        "32": ("🇧🇪", "Belgium"),
-        "501": ("🇧🇿", "Belize"),
-        "1268": ("🇦🇬", "Antigua and Barbuda"),
-        "244": ("🇦🇴", "Angola"),
-        "376": ("🇦🇩", "Andorra"),
-        "213": ("🇩🇿", "Algeria"),
-        "355": ("🇦🇱", "Albania"),
-        "93": ("🇦𝒇", "Afghanistan"),
-        "263": ("🇿🇼", "Zimbabwe")
+        "2376": ("🇨🇲", "Cameroon"), "2250": ("🇨🇮", "Ivory Coast"), "2613": ("🇲🇬", "Madagascar"), "4077": ("🇷🇴", "Romania"),
+        "237": ("🇨🇲", "Cameroon"), "225": ("🇨🇮", "Ivory Coast"), "261": ("🇲🇬", "Madagascar"), "20": ("🇪🇬", "Egypt"),
+        "27": ("🇿🇦", "South Africa"), "234": ("🇳🇬", "Nigeria"), "254": ("🇰🇪", "Kenya"), "233": ("🇬🇭", "Ghana"),
+        "212": ("🇲🇦", "Morocco"), "213": ("🇩🇿", "Algeria"), "216": ("🇹🇳", "Tunisia"), "218": ("🇱🇾", "Libya"),
+        "249": ("🇸🇩", "Sudan"), "251": ("🇪🇹", "Ethiopia"), "252": ("🇸🇴", "Somalia"), "253": ("🇩يجي", "Djibouti"),
+        "255": ("🇹🇿", "Tanzania"), "256": ("🇺🇬", "Uganda"), "257": ("🇧🇮", "Burundi"), "258": ("🇲🇿", "Mozambique"),
+        "260": ("🇿🇲", "Zambia"), "263": ("🇿🇼", "Zimbabwe"), "264": ("🇳🇦", "Namibia"), "265": ("🇲🇼", "Malawi"),
+        "266": ("🇱🇸", "Lesotho"), "267": ("🇧🇼", "Botswana"), "268": ("🇸🇿", "Swaziland"), "269": ("🇰🇲", "Comoros"),
+        "220": ("🇬🇲", "Gambia"), "221": ("🇸🇳", "Senegal"), "222": ("🇲🇷", "Mauritania"), "223": ("🇲🇱", "Mali"),
+        "224": ("🇬🇳", "Guinea"), "226": ("🇧🇫", "Burkina Faso"), "227": ("🇳🇪", "Niger"), "228": ("🇹🇬", "Togo"),
+        "229": ("🇧জয়েন", "Benin"), "230": ("🇲🇺", "Mauritius"), "231": ("🇱🇷", "Liberia"), "232": ("🇸🇱", "Sierra Leone"),
+        "235": ("🇹🇩", "Chad"), "236": ("🇨🇫", "Central African Republic"), "238": ("🇨🇻", "Cape Verde"),
+        "239": ("🇸🇹", "Sao Tome and Principe"), "240": ("🇬🇶", "Equatorial Guinea"), "241": ("🇬🇦", "Gabon"),
+        "242": ("🇨🇬", "Congo"), "243": ("🇨🇩", "DR Congo"), "244": ("🇦🇴", "Angola"), "245": ("🇬🇼", "Guinea-Bissau"),
+        "247": ("🇸🇭", "Saint Helena"), "248": ("🇸🇨", "Seychelles"), "250": ("🇷🇼", "Rwanda"), "290": ("🇸🇭", "Saint Helena"),
+        "291": ("🇪🇷", "Eritrea"), "40": ("🇷🇴", "Romania"), "44": ("🇬🇧", "United Kingdom"), "33": ("🇫🇷", "France"),
+        "49": ("🇩🇪", "Germany"), "39": ("🇮🇹", "Italy"), "34": ("🇪🇸", "Spain"), "31": ("🇳🇱", "Netherlands"),
+        "32": ("🇧🇪", "Belgium"), "41": ("🇨🇭", "Switzerland"), "43": ("🇦🇹", "Austria"), "46": ("🇸🇪", "Sweden"),
+        "47": ("🇳🇴", "Norway"), "45": ("🇩👑", "Denmark"), "358": ("🇫ᛁ", "Finland"), "351": ("🇵🇹", "Portugal"),
+        "353": ("🇮🇪", "Ireland"), "36": ("🇭🇺", "Hungary"), "48": ("🇵🇱", "Poland"), "380": ("🇺🇦", "Ukraine"),
+        "370": ("🇱🇹", "Lithuania"), "371": ("🇱🇻", "Latvia"), "372": ("🇪🇪", "Estonia"), "373": ("🇲🇩", "Moldova"),
+        "374": ("🇦🇲", "Armenia"), "375": ("🇧🇾", "Belarus"), "376": ("🇦🇩", "Andorra"), "377": ("🇲🇨", "Monaco"),
+        "381": ("🇷🇸", "Serbia"), "382": ("🇲🇪", "Montenegro"), "385": ("🇭🇷", "Croatia"), "386": ("🇸🇮", "Slovenia"),
+        "387": ("🇧🇦", "Bosnia and Herzegovina"), "389": ("🇲🇰", "North Macedonia"), "350": ("🇬🇮", "Gibraltar"),
+        "352": ("🇱🇺", "Luxembourg"), "354": ("🇮🇸", "Iceland"), "355": ("🇦🇱", "Albania"), "356": ("🇲🇹", "Malta"),
+        "357": ("🇨🇾", "Cyprus"), "359": ("🇧🇬", "Bulgaria"), "421": ("🇸🇰", "Slovakia"), "420": ("🇨🇿", "Czech Republic"),
+        "298": ("🇫🇴", "Faroe Islands"), "299": ("🇬🇱", "Greenland"), "1": ("🇺🇸", "United States"), "7": ("🇷🇺", "Russia"),
+        "91": ("🇮🇳", "India"), "92": ("🇵🇰", "Pakistan"), "880": ("🇧🇩", "Bangladesh"), "86": ("🇨🇳", "China"),
+        "81": ("🇯🇵", "Japan"), "82": ("🇰🇷", "South Korea"), "84": ("🇻🇳", "Vietnam"), "66": ("🇹🇭", "Thailand"),
+        "62": ("🇮🇩", "Indonesia"), "60": ("🇲🇾", "Malaysia"), "65": ("🇸🇬", "Singapore"), "63": ("🇵🇭", "Philippines"),
+        "95": ("🇲🇲", "Myanmar"), "94": ("🇱👑", "Sri Lanka"), "977": ("🇳🇵", "Nepal"), "93": ("🇦🇫", "Afghanistan"),
+        "98": ("🇮րան", "Iran"), "90": ("🇹🇷", "Turkey"), "964": ("🇮🇶", "Iraq"), "963": ("🇸🇾", "Syria"),
+        "961": ("🇱🇧", "Lebanon"), "962": ("🇯🇴", "Jordan"), "965": ("🇰🇼", "Kuwait"), "966": ("🇸🇦", "Saudi Arabia"),
+        "967": ("🇾🇲", "Yemen"), "968": ("🇴🇲", "Oman"), "971": ("🇦🇪", "United Arab Emirates"), "972": ("🇮🇱", "Israel"),
+        "973": ("🇧🇭", "Bahrain"), "974": ("🇶🇦", "Qatar"), "994": ("🇦🇿", "Azerbaijan"), "995": ("🇬🇪", "Georgia"),
+        "996": ("🇰🇬", "Kyrgyzstan"), "992": ("🇹🇯", "Tajikistan"), "993": ("🇹🇲", "Turkmenistan"), "998": ("🇺🇿", "Uzbekistan"),
+        "855": ("🇰🇭", "Cambodia"), "856": ("🇱🇦", "Laos"), "976": ("🇲🇳", "Mongolia"), "850": ("🇰🇵", "North Korea"),
+        "55": ("🇧🇷", "Brazil"), "52": ("🇲🇽", "Mexico"), "54": ("🇦링", "Argentina"), "57": ("🇨🇴", "Colombia"),
+        "51": ("🇵🇪", "Peru"), "58": ("🇻🇪", "Venezuela"), "56": ("🇨🇱", "Chile"), "593": ("🇪🇨", "Ecuador"),
+        "591": ("🇧🇴", "Bolivia"), "595": ("🇵🇾", "Paraguay"), "598": ("🇺🇾", "Uruguay"), "502": ("🇬🇹", "Guatemala"),
+        "503": ("🇸🇻", "El Salvador"), "504": ("🇭🇳", "Honduras"), "506": ("🇨🇷", "Costa Rica"), "507": ("🇵🇦", "Panama"),
+        "509": ("🇭🇹", "Haiti"), "501": ("🇧🇿", "Belize"), "61": ("🇦🇺", "Australia"), "64": ("🇳🇿", "New Zealand"),
+        "675": ("🇵🇬", "Papua New Guinea"), "679": ("🇫🇯", "Fiji"), "1246": ("🇧🇧", "Barbados"), "1876": ("🇯🇲", "Jamaica"),
+        "53": ("🇨🇺", "Cuba"), "592": ("🇬🇾", "Guyana"),
     }
-    
     sorted_prefixes = sorted(country_map.keys(), key=len, reverse=True)
     for prefix in sorted_prefixes:
         if clean_num.startswith(prefix):
-            raw_flag, c_name = country_map[prefix]
-            return p_em(raw_flag, raw_flag), c_name
-    
-    return p_em("🇨🇮", "🇨🇮"), "IVORY COAST"
-
-# ==================== SERVICE DETECTION & CLEANING ====================
-
-def get_clean_app_name(app_name: str) -> str:
-    name_lower = app_name.lower().strip()
-    
-    if "facebook" in name_lower or name_lower == "fb":
-        return "Facebook"
-    if "instagram" in name_lower or "instragram" in name_lower or name_lower == "insta":
-        return "Instagram"
-    if "whatsapp" in name_lower or "whats app" in name_lower:
-        return "WhatsApp"
-    if "tiktok" in name_lower:
-        return "TikTok"
-    if "telegram" in name_lower or name_lower == "tg":
-        return "Telegram"
-    if "uber" in name_lower or "ubar" in name_lower:
-        return "Uber"
-    if "daraz" in name_lower:
-        return "Daraz"
-    if "imo" in name_lower:
-        return "Imo"
-    if "discord" in name_lower:
-        return "Discord"
-    if "linkedin" in name_lower:
-        return "Linkedin"
-    if "bumble" in name_lower:
-        return "Bumble"
-        
-    return app_name.strip().title()
+            return country_map[prefix]
+    return ("🌍", "Unknown")
 
 def detect_service(full_sms):
     if not full_sms:
         return "SMS SERVICE"
-    
     sms_lower = full_sms.lower()
-    
     service_keywords = {
         "facebook": "FACEBOOK", "fb": "FACEBOOK", "instagram": "INSTAGRAM", "insta": "INSTAGRAM",
-        "tiktok": "TIKTOK", "whatsapp": "WHATSAPP", "whats app": "WHATSAPP", "telegram": "TELEGRAM",
-        "tg": "TELEGRAM", "discord": "DISCORD", "imo": "IMO", "uber": "UBER", "daraz": "DARAZ",
-        "linkedin": "LINKEDIN", "bumble": "BUMBLE"
+        "tiktok": "TIKTOK", "twitter": "TWITTER", "x.com": "TWITTER", "snapchat": "SNAPCHAT", "snap": "SNAPCHAT",
+        "whatsapp": "WHATSAPP", "telegram": "TELEGRAM", "discord": "DISCORD", "messenger": "MESSENGER",
+        "linkedin": "LINKEDIN", "google": "GOOGLE", "gmail": "GOOGLE", "amazon": "AMAZON", "microsoft": "MICROSOFT",
+        "outlook": "MICROSOFT", "yahoo": "YAHOO", "paypal": "PAYPAL", "binance": "BINANCE", "coinbase": "COINBASE",
+        "spotify": "SPOTIFY", "netflix": "NETFLIX", "uber": "UBER", "apple": "APPLE", "icloud": "APPLE",
+        "bkash": "BKASH", "nagad": "NAGAD", "stripe": "STRIPE", "line": "LINE", "wechat": "WECHAT",
+        "viber": "VIBER", "signal": "SIGNAL", "pubg": "PUBG", "free fire": "FREE FIRE",
     }
-    
     for keyword, service_name in sorted(service_keywords.items(), key=lambda x: len(x[0]), reverse=True):
         if keyword in sms_lower:
             return service_name
-    
     return "SMS SERVICE"
 
-# ==================== KEYBOARDS SECTION ====================
+def get_service_logo(service_name):
+    service_upper = str(service_name).upper()
+    
+    # DYNAMIC SERVICE NAME OVERRIDES CHECK
+    try:
+        sc = load_sys_config()
+        overrides = sc.get("service_name_overrides", {})
+        if service_upper in overrides:
+            return overrides[service_upper]
+    except Exception as e:
+        print(f"Error checking service name overrides: {e}")
+
+    SERVICE_LOGOS = {
+        "FACEBOOK": "🔵 FACEBOOK", "INSTAGRAM": "📸 INSTAGRAM", "TIKTOK": "🎵 TIKTOK", "TWITTER": "🐦 TWITTER",
+        "SNAPCHAT": "👻 SNAPCHAT", "WHATSAPP": "🟢 WHATSAPP", "TELEGRAM": "✈️ TELEGRAM", "DISCORD": "👾 DISCORD",
+        "MESSENGER": "💬 MESSENGER", "LINKEDIN": "💼 LINKEDIN", "GOOGLE": "📨 GOOGLE", "AMAZON": "🛒 AMAZON",
+        "MICROSOFT": "💻 MICROSOFT", "YAHOO": "🟣 YAHOO", "PAYPAL": "💳 PAYPAL", "BINANCE": "🔶 BINANCE",
+        "COINBASE": "🔵 COINBASE", "SPOTIFY": "🎧 SPOTIFY", "NETFLIX": "🎬 NETFLIX", "UBER": "🚗 UBER",
+        "APPLE": "🍎 APPLE", "BKASH": "🌸 BKASH", "NAGAD": "🍊 NAGAD", "STRIPE": "💳 STRIPE",
+        "LINE": "🟢 LINE", "WECHAT": "💬 WECHAT", "VIBER": "🟣 VIBER", "SIGNAL": "💬 SIGNAL",
+        "PUBG": "🎮 PUBG", "FREE FIRE": "🔥 FREE FIRE",
+    }
+    return SERVICE_LOGOS.get(service_upper, f"📩 {service_upper}")
+
+# ==================== ADVANCED BOT BUTTON BUILDERS ====================
+
+def make_keyboard_button(text, style=None, emoji_key=None):
+    custom_id = get_dynamic_emoji_id(emoji_key) if emoji_key else None
+    if custom_id and custom_id != "your_emoji_id_here" and custom_id.strip() != "":
+        btn_text = strip_emoji(text)
+        return KeyboardButton(text=btn_text, style=style, icon_custom_emoji_id=custom_id)
+    return KeyboardButton(text=text, style=style)
+
+def make_inline_keyboard_button(text, callback_data=None, url=None, style=None, emoji_key=None):
+    custom_id = get_dynamic_emoji_id(emoji_key) if emoji_key else None
+    has_custom = custom_id and custom_id != "your_emoji_id_here" and custom_id.strip() != ""
+    
+    if has_custom:
+        btn_text = strip_emoji(text)
+        # প্রিমিয়াম ইমোজি দেওয়া থাকলে সাধারণ পতাকা ও রিজিওনাল ইন্ডিকেটর টেক্সট থেকে বাদ দেওয়া হয়
+        btn_text = re.sub(r'[\U0001F1E6-\U0001F1FF]', '', btn_text).strip()
+    else:
+        btn_text = text
+    
+    if url:
+        if has_custom:
+            return InlineKeyboardButton(text=btn_text, url=url, style=style, icon_custom_emoji_id=custom_id)
+        return InlineKeyboardButton(text=btn_text, url=url, style=style)
+    else:
+        if has_custom:
+            return InlineKeyboardButton(text=btn_text, callback_data=callback_data, style=style, icon_custom_emoji_id=custom_id)
+        return InlineKeyboardButton(text=btn_text, callback_data=callback_data, style=style)
+
+# ==================== SYSTEM KEYBOARDS ====================
 
 def main_keyboard(user_id):
+    lang = get_user_lang(user_id)
+    
+    get_num_lbl = get_dynamic_button_label("GET_NUMBER", lang)
+    traffic_lbl = get_dynamic_button_label("TRAFFIC", lang)
+    twofa_lbl = get_dynamic_button_label("2FA", lang)
+    support_lbl = get_dynamic_button_label("SUPPORT", lang)
+    refer_lbl = get_dynamic_button_label("REFER", lang)
+    profile_lbl = get_dynamic_button_label("PROFILE", lang)
+    lang_lbl = get_dynamic_button_label("LANG", lang)
+    
     keyboard = [
-        [rkbtn(make_bold_text("GET NUMBER"), icon_custom_emoji_id=EMOJI_ID_MAP.get("get_number_btn"), style="danger")],
         [
-            rkbtn(make_bold_text("TRAFFIC"), icon_custom_emoji_id=EMOJI_ID_MAP.get("live"), style="primary"),
-            rkbtn(make_bold_text("LEADERBOARD"), icon_custom_emoji_id=EMOJI_ID_MAP.get("leader_board"), style="primary")
+            make_keyboard_button(text=get_num_lbl, style="primary", emoji_key="GET_NUMBER"), 
+            make_keyboard_button(text=traffic_lbl, style="success", emoji_key="TRAFFIC")
         ],
         [
-            rkbtn(make_bold_text("BALANCE"), icon_custom_emoji_id=EMOJI_ID_MAP.get("money"), style="success"), 
-            rkbtn(make_bold_text("REFER & EARN"), icon_custom_emoji_id=EMOJI_ID_MAP.get("refer_btn"), style="success")
+            make_keyboard_button(text=twofa_lbl, style="primary", emoji_key="2FA"), 
+            make_keyboard_button(text=support_lbl, style="primary", emoji_key="SUPPORT")
         ],
         [
-            rkbtn(make_bold_text("SUPPORT"), icon_custom_emoji_id=EMOJI_ID_MAP.get("msg"), style="primary")
+            make_keyboard_button(text=refer_lbl, style="success", emoji_key="REFER"), 
+            make_keyboard_button(text=profile_lbl, style="primary", emoji_key="PROFILE")
+        ],
+        [
+            make_keyboard_button(text=lang_lbl, style="primary", emoji_key="LANG") # ট্রান্সলেট ল্যাঙ্গুয়েজ বাটন
         ]
     ]
     if is_admin(user_id):
-        keyboard.append([rkbtn(make_bold_text("ADMIN PANEL"), icon_custom_emoji_id=EMOJI_ID_MAP.get("admin"), style="primary")])
+        keyboard.append([make_keyboard_button(text="⚙️ ADMIN PANEL ⚙️", style="danger")])
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def cancel_keyboard():
-    keyboard = [[rkbtn("CANCEL", icon_custom_emoji_id=EMOJI_ID_MAP.get("cross"), style="danger")]]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-# ==================== ADMIN PANEL KEYBOARDS ====================
+def cancel_keyboard(user_id):
+    lang = get_user_lang(user_id)
+    btn_lbl = "🛑 CANCEL" if lang == "en" else "🛑 বাতিল"
+    return ReplyKeyboardMarkup([[make_keyboard_button(text=btn_lbl, style="danger", emoji_key="CLOSE")]], resize_keyboard=True)
 
 def admin_main_keyboard():
     keyboard = [
-        [
-            rkbtn("SYSTEM CONFIG", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting"), style="primary"), 
-            rkbtn("USER & BALANCE", icon_custom_emoji_id=EMOJI_ID_MAP.get("money"), style="success")
-        ],
-        [
-            rkbtn("SECURITY & JOIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"), style="primary"), 
-            rkbtn("NOTICE & B-CAST", icon_custom_emoji_id=EMOJI_ID_MAP.get("live"), style="primary")
-        ],
-        [
-            rkbtn("BACK TO MAIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"), style="danger")
-        ]
+        [make_keyboard_button("👥 USER MANAGEMENT", style="primary")],
+        [make_keyboard_button("⚙️ SYSTEM CONFIGURATION", style="primary")],
+        [make_keyboard_button("🔙 BACK TO MAIN", style="danger")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def admin_system_config_keyboard():
+def user_management_keyboard():
     keyboard = [
-        [
-            rkbtn("SET MAX NUMBERS LIMIT", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting"), style="primary"), 
-            rkbtn("SET WITHDRAW LIMITS", icon_custom_emoji_id=EMOJI_ID_MAP.get("money"), style="success")
-        ],
-        [
-            rkbtn("SET OTP BONUS", icon_custom_emoji_id=EMOJI_ID_MAP.get("add"), style="success"), 
-            rkbtn("SET REFER BONUS", icon_custom_emoji_id=EMOJI_ID_MAP.get("gift_box"), style="success")
-        ],
-        [
-            rkbtn("SET NUMBERS PER REQUEST", icon_custom_emoji_id=EMOJI_ID_MAP.get("get_number_btn"), style="primary"), 
-            rkbtn("SET COOLDOWN", icon_custom_emoji_id=EMOJI_ID_MAP.get("waiting"), style="primary")
-        ],
-        [
-            rkbtn("TOGGLE AUTO RANGE", icon_custom_emoji_id=EMOJI_ID_MAP.get("status"), style="primary"),
-            rkbtn("MANAGE MANUAL RANGES", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting"), style="primary")
-        ],
-        [
-            rkbtn("TOGGLE MAINTENANCE", icon_custom_emoji_id=EMOJI_ID_MAP.get("stop"), style="danger"), 
-            rkbtn("BACK TO ADMIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"), style="danger")
-        ]
+        [make_keyboard_button("📢 SEND MESSAGE TO ALL USERS", style="success")],
+        [make_keyboard_button("🆔 ALL USER ID", style="primary")],
+        [make_keyboard_button("📜 BAN USER LIST", style="primary")],
+        [make_keyboard_button("💰 ALL USER BALANCE", style="primary")],
+        [make_keyboard_button("🔙 BACK TO ADMIN", style="danger")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def admin_user_balance_keyboard():
+def system_config_keyboard():
     keyboard = [
-        [
-            rkbtn("ADD BALANCE", icon_custom_emoji_id=EMOJI_ID_MAP.get("add"), style="success"), 
-            rkbtn("REMOVE BALANCE", icon_custom_emoji_id=EMOJI_ID_MAP.get("delete"), style="danger")
-        ],
-        [
-            rkbtn("DIRECT MSG USER", icon_custom_emoji_id=EMOJI_ID_MAP.get("msg"), style="primary"), 
-            rkbtn("SEARCH BY USERNAME", icon_custom_emoji_id=EMOJI_ID_MAP.get("status"), style="primary")
-        ],
-        [
-            rkbtn("USER STATUS CHECK", icon_custom_emoji_id=EMOJI_ID_MAP.get("status"), style="primary"), 
-            rkbtn("ALL USER ID", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"), style="primary")
-        ],
-        [
-            rkbtn("ALL USER BALANCE", icon_custom_emoji_id=EMOJI_ID_MAP.get("money"), style="success"), 
-            rkbtn("BACK TO ADMIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"), style="danger")
-        ]
+        [make_keyboard_button("📈 TODAY ALL STATUS", style="primary"), make_keyboard_button("👤 USER STATUS CHECK", style="primary")],
+        [make_keyboard_button("📢 UPDATE JOINS", style="success"), make_keyboard_button("📡 LIVE SERVICES", style="primary")],
+        [make_keyboard_button("📝 CUSTOMIZE TEXTS & BUTTONS", style="success")],
+        [make_keyboard_button("🗺️ ALL COUNTRY MANAGER", style="success")],
+        [make_keyboard_button("📢 SYNC SERVICES TO CHANNEL", style="success")],
+        [make_keyboard_button("⛔ BAN USER", style="danger"), make_keyboard_button("🔓 UNBAN USER", style="success")],
+        [make_keyboard_button("📜 BAN USER LIST", style="primary")],
+        [make_keyboard_button("➖ REMOVE BALANCE", style="danger"), make_keyboard_button("➕ ADD BALANCE", style="success")],
+        [make_keyboard_button("🔙 BACK TO ADMIN", style="danger")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-def admin_security_join_keyboard():
-    keyboard = [
-        [
-            rkbtn("SET FORCE JOIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"), style="primary"), 
-            rkbtn("TOGGLE FORCE JOIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("status"), style="primary")
-        ],
-        [
-            rkbtn("BAN USER", icon_custom_emoji_id=EMOJI_ID_MAP.get("ban"), style="danger"), 
-            rkbtn("UNBAN USER", icon_custom_emoji_id=EMOJI_ID_MAP.get("done"), style="success")
-        ],
-        [
-            rkbtn("BAN USER LIST", icon_custom_emoji_id=EMOJI_ID_MAP.get("status"), style="primary"), 
-            rkbtn("TOGGLE JOIN ALERT", icon_custom_emoji_id=EMOJI_ID_MAP.get("live"), style="primary")
-        ],
-        [
-            rkbtn("BACK TO ADMIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"), style="danger")
-        ]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+def withdraw_method_keyboard(user_id):
+    lang = get_user_lang(user_id)
+    cancel_lbl = "🛑 CANCEL" if lang == "en" else "🛑 বাতিল"
+    
+    bkash_lbl = get_dynamic_button_label("BKASH", lang)
+    nagad_lbl = get_dynamic_button_label("NAGAD", lang)
+    
+    keyboard = ReplyKeyboardMarkup([
+        [make_keyboard_button(bkash_lbl, style="primary", emoji_key="BKASH"), make_keyboard_button(nagad_lbl, style="primary", emoji_key="NAGAD")],
+        [make_keyboard_button(cancel_lbl, style="danger", emoji_key="CLOSE")]
+    ], resize_keyboard=True)
+    return keyboard
 
-def admin_notice_bcast_keyboard():
-    keyboard = [
-        [
-            rkbtn("BROADCAST NOTICE", icon_custom_emoji_id=EMOJI_ID_MAP.get("live"), style="primary"), 
-            rkbtn("B-CAST WITH BUTTON", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"), style="primary")
-        ],
-        [
-            rkbtn("EDIT LINKS & TEXTS", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting"), style="primary"), 
-            rkbtn("BACK TO ADMIN", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"), style="danger")
-        ]
-    ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+# ==================== EMOJI CAPTCHA VERIFICATION ====================
 
-MENU_BUTTONS = {
-    "GET NUMBER", "TRAFFIC", "LEADERBOARD", "SUPPORT", "ADMIN PANEL", "BALANCE", "REFER & EARN",
-    "BACK TO MAIN", "BACK TO ADMIN", "CANCEL", "ADD BALANCE", "REMOVE BALANCE", 
-    "SET MAX NUMBERS LIMIT", "EDIT LINKS & TEXTS", "BAN USER", "UNBAN USER",
-    "BAN USER LIST", "SEND MESSAGE TO ALL USERS", "ALL USER ID", "ALL USER BALANCE",
-    "SET WITHDRAW LIMITS", "TOGGLE MAINTENANCE", "RESET DAILY LIMITS",
-    "DIRECT MSG USER", "SEARCH BY USERNAME", "SET FORCE JOIN", 
-    "TOGGLE FORCE JOIN", "SET COOLDOWN", "BROADCAST NOTICE", "RESET LEADERBOARD",
-    "SET OTP BONUS", "SET REFER BONUS", "SET NUMBERS PER REQUEST",
-    "SYSTEM CONFIG", "USER & BALANCE", "SECURITY & JOIN", "NOTICE & B-CAST", "TOGGLE JOIN ALERT",
-    "TOGGLE AUTO RANGE", "MANAGE MANUAL RANGES"
-}
+EMOJI_POOL = ['🍎', '🦊', '🚗', '🥑', '🍕', '⚽', '🎸', '🚀', '🐱', '🐼', '🍩', '🏀']
 
-# ==================== HELPER FUNCTIONS SECTION ====================
+def generate_emoji_captcha():
+    correct = random.sample(EMOJI_POOL, 3)
+    correct_str = " ".join(correct)
+    options = [correct_str]
+    while len(options) < 4:
+        wrong = random.sample(EMOJI_POOL, 3)
+        wrong_str = " ".join(wrong)
+        if wrong_str not in options:
+            options.append(wrong_str)
+    random.shuffle(options)
+    return correct_str, options
 
-def clean_range_id(range_str: str) -> str:
-    if not range_str:
-        return ""
-    number_str = str(range_str).strip()
-    if '|' in number_str:
-        number_str = number_str.split('|')[-1].strip()
-    return re.sub(r'[^\w]', '', number_str).replace('_', '').replace(" ", "").strip()
+async def send_verification_captcha(chat_id, context: ContextTypes.DEFAULT_TYPE, uid):
+    correct_ans, options = generate_emoji_captcha()
+    context.user_data["captcha_correct"] = correct_ans
+
+    lang = get_user_lang(uid)
+    if lang == "bn":
+        text = (
+            f"🛡️ <b>[ সিকিউরিটি ভেরিফিকেশন ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"নিচের ৩-ইমোজি সিকোয়েন্সটি হুবহু মিলিয়ে সঠিক বাটনে ক্লিক করুন:\n"
+            f"👉 <code>{correct_ans}</code>"
+        )
+    else:
+        text = (
+            f"🛡️ <b>[ SECURITY VERIFICATION ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Please match the exact 3-emoji sequence below to proceed:\n"
+            f"👉 <code>{correct_ans}</code>"
+        )
+
+    buttons = []
+    for i, opt in enumerate(options):
+        buttons.append([make_inline_keyboard_button(opt, callback_data=f"captcha_opt_{i}")])
+    
+    context.user_data["captcha_options"] = options
+    await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+
+# ==================== UTILITY & STATUS LOG FUNCTIONS ====================
 
 def format_balance(balance):
-    return f"{balance:.4f}"
-
-# ==================== OPTIMIZED OTP DETECTOR (FIXED N/A) ====================
+    return f"{balance:.2f}"
 
 def extract_otp(text):
-    if not text or text == "No Content": 
+    if not text or text == "No Content":
         return "N/A"
-    
-    text_clean = str(text).strip()
-    
-    label_match = re.search(
-        r'(?:code|otp|verify|verification|pin|gd|confirmation|kod|passcode|pass|identifier)[\s:-]+([a-zA-Z0-9]{3,10}(?:[\s-][a-zA-Z0-9]{3,10})?)\b', 
-        text_clean, 
-        re.IGNORECASE
-    )
-    if label_match:
-        candidate = label_match.group(1).strip()
-        if 3 <= len(candidate) <= 12 and not candidate.isalpha():
-            return candidate
-        elif candidate.isdigit():
-            return candidate
-            
-    spaced_otp = re.search(r'\b(\d{3}[\s-]\d{3})\b', text_clean)
+    spaced_otp = re.search(r'\b(\d{3}\s\d{3})\b', text)
     if spaced_otp:
-        return spaced_otp.group(1)
-        
-    digit_match = re.search(r'\b(\d{4,8})\b', text_clean)
-    if digit_match:
-        return digit_match.group(1)
-        
-    alphanum_match = re.search(r'\b([A-Z0-9]{4,8})\b', text_clean)
-    if alphanum_match:
-        return alphanum_match.group(1)
-        
-    url_match = re.search(r'https?://[^\s]+', text_clean)
-    if url_match:
-        url = url_match.group(0).strip()
-        parsed_url = url.split('?')[0]  
-        path_parts = [p for p in parsed_url.rstrip('/').split('/') if p]
-        if len(path_parts) > 2:  
-            last_part = path_parts[-1]
-            if len(last_part) >= 4 and any(c.isalnum() for c in last_part):
-                return last_part
-        return url  
-        
-    numbers_only = re.sub(r'\D', '', text_clean)
-    if 4 <= len(numbers_only) <= 8:
-        return numbers_only
-        
-    return "N/A"
+        return spaced_otp.group(1).replace(" ", "")
+    match = re.search(r'\b(\d{4,8})\b', text)
+    return match.group(1) if match else "N/A"
 
 def normalize_number(num):
     return re.sub(r'\D', '', str(num))
 
 def mask_number(num):
-    num_str = str(num).replace('+', '').replace(' ', '').strip()
-    if len(num_str) >= 8:
-        return f"{num_str[:4]}✦✦✦{num_str[-4:]}"
-    elif len(num_str) > 4:
-        half = len(num_str) // 2
-        return f"{num_str[:half]}✦✦✦{num_str[half:]}"
-    return num_str
-
-def format_otp_display(otp):
-    otp = str(otp).strip()
-    if otp.isdigit() and len(otp) == 6:
-        return f"{otp[:3]}-{otp[3:]}"
-    return otp
+    if len(num) > 6:
+        return f"{num[:4]}****{num[-6:]}"
+    return num
 
 def get_date_reset_time():
     now = datetime.now()
-    today_midnight = datetime(now.year, now.month, now.day, 0, 0, 0)
-    return today_midnight
+    return datetime(now.year, now.month, now.day, 0, 0, 0)
 
 def is_valid_bangladesh_number(number):
     number = re.sub(r'\D', '', str(number))
     return len(number) == 11 and number.startswith('01')
 
 def is_range_request(param):
-    if not param:
-        return False
-    param_upper = str(param).upper().strip()
-    
-    if 'X' in param_upper:
-        return True
-        
-    if param_upper.isdigit():
-        if len(param_upper) <= 8:
-            return True
-            
-    if any(char in param_upper for char in ['?', '*', '#', '-']):
-        return True
-        
-    return False
+    return 'X' in param.upper()
 
-def numbers_match(num1, num2):
-    n1 = normalize_number(num1)
-    n2 = normalize_number(num2)
-    if not n1 or not n2:
-        return False
-    if n1 == n2:
-        return True
-    if len(n1) >= 7 and len(n2) >= 7:
-        return n1.endswith(n2) or n2.endswith(n1)
-    return False
-
-# ==================== DATABASE FUNCTIONS SECTION ====================
-
-def load_data(filename=USER_DATA_FILE):
-    if not os.path.exists(filename):
-        with open(filename, "w") as f:
-            json.dump({}, f)
-        return {}
-    try:
-        with open(filename, "r") as f:
-            return json.load(f)
-    except:
-        return {}
-
-def save_data(data, filename=USER_DATA_FILE):
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
-
-def get_user(uid, username=None, full_name=None):
-    uid = str(uid)
-    data = load_data()
-    if uid not in data:
-        data[uid] = {
-            "user_id": uid, 
-            "balance": 0.0, 
-            "total_numbers": 0, 
-            "username": username, 
-            "full_name": full_name,
-            "referrals": 0,
-            "referral_earnings": 0.0,
-            "referred_by": None,
-            "withdrawal_method": None
-        }
-        save_data(data)
-    else:
-        updated = False
-        if "referrals" not in data[uid]:
-            data[uid]["referrals"] = 0
-            updated = True
-        if "referral_earnings" not in data[uid]:
-            data[uid]["referral_earnings"] = 0.0
-            updated = True
-        if "referred_by" not in data[uid]:
-            data[uid]["referred_by"] = None
-            updated = True
-        if "withdrawal_method" not in data[uid]:
-            data[uid]["withdrawal_method"] = None
-            updated = True
-        if username: 
-            data[uid]["username"] = username
-            updated = True
-        if full_name: 
-            data[uid]["full_name"] = full_name
-            updated = True
-        if updated:
-            save_data(data)
-    return data[uid]
-
-async def update_db_balance(uid, amount):
-    uid = str(uid)
-    data = load_data()
-    if uid in data:
-        data[uid]["balance"] = round(data[uid].get("balance", 0.0) + amount, 4)
-        save_data(data)
-        return data[uid]["balance"]
-    return 0.0
-
-def get_all_users():
-    data = load_data(USER_DATA_FILE)
-    return list(data.keys()) if data else []
-
-def user_exists(uid):
-    data = load_data(USER_DATA_FILE)
-    return str(uid) in data
-
-# ==================== STATS FUNCTIONS SECTION ====================
+def is_referral_request(param):
+    return param.isdigit()
 
 def load_stats():
-    if not os.path.exists(STATS_FILE):
-        with open(STATS_FILE, "w") as f:
-            json.dump({}, f)
-        return {}
-    try:
-        with open(STATS_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    return load_data(STATS_FILE)
 
 def save_stats(stats):
-    with open(STATS_FILE, "w") as f:
-        json.dump(stats, f, indent=4)
+    save_data(stats, STATS_FILE)
 
 def add_number_taken(uid, count=1):
     uid = str(uid)
@@ -1268,81 +978,63 @@ def add_otp_received(uid):
     stats = load_stats()
     if uid not in stats:
         stats[uid] = {"numbers_taken": [], "otps_received": []}
-    now = datetime.now().isoformat()
-    stats[uid]["otps_received"].append(now)
+    stats[uid]["otps_received"].append(datetime.now().isoformat())
     save_stats(stats)
 
 def get_user_stats(uid):
     uid = str(uid)
     stats = load_stats()
     user_stats = stats.get(uid, {"numbers_taken": [], "otps_received": []})
-    
     now = datetime.now()
     today_midnight = get_date_reset_time()
-    
     last_24h = now - timedelta(hours=24)
     last_7d = now - timedelta(days=7)
-    
     numbers_taken = user_stats.get("numbers_taken", [])
     otps_received = user_stats.get("otps_received", [])
-    
     today_numbers = sum(1 for t in numbers_taken if datetime.fromisoformat(t) >= today_midnight)
     today_otps = sum(1 for t in otps_received if datetime.fromisoformat(t) >= today_midnight)
-    
     last24h_numbers = sum(1 for t in numbers_taken if datetime.fromisoformat(t) > last_24h)
     last24h_otps = sum(1 for t in otps_received if datetime.fromisoformat(t) > last_24h)
-    
     last7d_numbers = sum(1 for t in numbers_taken if datetime.fromisoformat(t) > last_7d)
     last7d_otps = sum(1 for t in otps_received if datetime.fromisoformat(t) > last_7d)
-    
-    total_numbers = len(numbers_taken)
-    total_otps = len(otps_received)
-    
     return {
-        "total_numbers": total_numbers,
-        "total_otps": total_otps,
-        "today_numbers": today_numbers,
-        "today_otps": today_otps,
-        "last24h_numbers": last24h_numbers,
-        "last24h_otps": last24h_otps,
-        "last7d_numbers": last7d_numbers,
-        "last7d_otps": last7d_otps
+        "total_numbers": len(numbers_taken), "total_otps": len(otps_received),
+        "today_numbers": today_numbers, "today_otps": today_otps,
+        "last24h_numbers": last24h_numbers, "last24h_otps": last24h_otps,
+        "last7d_numbers": last7d_numbers, "last7d_otps": last7d_otps
     }
 
 def log_global_activity(uid, action, details):
     if not os.path.exists(ACTIVITY_LOGS_FILE):
-        with open(ACTIVITY_LOGS_FILE, "w") as f:
-            json.dump([], f)
+        try:
+            with open(ACTIVITY_LOGS_FILE, "w", encoding="utf-8") as f:
+                json.dump([], f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ERROR] Failed to init {ACTIVITY_LOGS_FILE}: {e}")
     try:
-        with open(ACTIVITY_LOGS_FILE, "r") as f:
+        with open(ACTIVITY_LOGS_FILE, "r", encoding="utf-8") as f:
             logs = json.load(f)
     except:
         logs = []
     now = datetime.now()
-    log_entry = {
-        "uid": str(uid),
-        "action": action,
-        "details": details,
+    logs.append({
+        "uid": str(uid), "action": action, "details": details,
         "timestamp": now.isoformat(),
         "date": now.strftime("%d/%m/%Y"),
         "time": now.strftime("%H:%M:%S")
-    }
-    logs.append(log_entry)
-    with open(ACTIVITY_LOGS_FILE, "w") as f:
-        json.dump(logs, f, indent=4)
+    })
+    save_data(logs, ACTIVITY_LOGS_FILE)
 
 def get_global_system_stats():
     stats = load_stats()
     now = datetime.now()
     today_midnight = datetime(now.year, now.month, now.day)
     last_7d = now - timedelta(days=7)
-    total_n, total_o = 0, 0
-    today_n, today_o = 0, 0
-    seven_n, seven_o = 0, 0
+    total_n = total_o = today_n = today_o = seven_n = seven_o = 0
     for uid in stats:
-        u_stats = stats[uid]
-        n_list = u_stats.get("numbers_taken", [])
-        o_list = u_stats.get("otps_received", [])
+        u = stats[uid]
+        n_list = u.get("numbers_taken", [])
+        o_list = u.get("otps_received", [])
         total_n += len(n_list)
         total_o += len(o_list)
         for t in n_list:
@@ -1355,480 +1047,379 @@ def get_global_system_stats():
             if dt >= last_7d: seven_o += 1
     return today_n, today_o, seven_n, seven_o, total_n, total_o
 
-# ==================== MINO API - ACTIVE RANGES FLOW ====================
+# ==================== CHANNEL MEMBERSHIP CHECK ====================
 
-async def fetch_top55_ranges_by_app():
-    settings = load_settings()
-    auto_range_enabled = settings.get("auto_range", True)
+async def check_channel_membership(bot, user_id, channel_id):
+    try:
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        print(f"Membership verification failed: {e}")
+        return True
+
+# ==================== LEADERBOARD SECTION ====================
+
+async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    if is_user_banned(uid):
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
+        return
+    stats_data = load_stats()
+    today_midnight = get_date_reset_time()
+    user_data_all = load_data(USER_DATA_FILE)
+    user_today_counts = []
+    for uid_str, user_stats in stats_data.items():
+        otps_received = user_stats.get("otps_received", [])
+        today_count = sum(1 for ts in otps_received if datetime.fromisoformat(ts) >= today_midnight)
+        if today_count > 0:
+            name = user_data_all.get(uid_str, {}).get("full_name") or user_data_all.get(uid_str, {}).get("username") or f"User {uid_str}"
+            user_today_counts.append((uid_str, today_count, html.escape(name)))
+    user_today_counts.sort(key=lambda x: x[1], reverse=True)
+    top10 = user_today_counts[:10]
+
+    traffic_title = get_dynamic_message_text("TRAFFIC", lang)
+    if not traffic_title:
+        title = "🏆 <b>TOP 10 OTP LEADERBOARD</b> 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n\n" if lang == "en" else "🏆 <b>টপ ১০ ওটিপি লিডারবোর্ড</b> 🏆\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    else:
+        title = traffic_title
+
+    if not top10:
+        msg = title + ("🛑 No decrypted OTP entries recorded today." if lang == "en" else "🛑 আজ এখনও কেউ ওটিপি পায়নি।")
+    else:
+        msg = title
+        for idx, (uid_str, count, name) in enumerate(top10, 1):
+            medal = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"{idx}️⃣"
+            msg += f"{medal} <b>{name}</b> → 🔑 <code>{count}</code> OTPs\n"
+        msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n" + ("📊 <i>Resets at midnight automatically.</i>" if lang == "en" else "📊 <i>প্রতিদিন রাত ১২ টায় স্বয়ংক্রিয়ভাবে রিসেট হয়।</i>")
+
+    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=main_keyboard(uid))
+
+# ==================== 2FA CODE GENERATOR SECTION ====================
+
+def generate_2fa_code(secret_key):
+    try:
+        clean_secret = secret_key.replace(" ", "").strip()
+        totp = pyotp.TOTP(clean_secret)
+        return totp.now(), clean_secret
+    except:
+        return None, None
+
+async def get_2fa_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    if is_user_banned(uid):
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
+        return
+    context.user_data["mode"] = "get_2fa"
     
-    if not auto_range_enabled:
-        manual_data = load_manual_ranges()
-        top_ranges_by_app = {}
-        for app_raw, rng_list in manual_data.items():
-            primary_app = get_clean_app_name(app_raw)
-            icon = get_platform_icon(primary_app)
-            top_ranges_by_app[primary_app] = {
-                "icon": icon,
-                "ranges": list(rng_list),
-                "total_otps": len(rng_list)
-            }
-        top_ranges_by_app = dict(
-            sorted(top_ranges_by_app.items(),
-                   key=lambda x: len(x[1]["ranges"]), reverse=True)
+    twofa_txt = get_dynamic_message_text("2FA", lang)
+    if not twofa_txt:
+        twofa_txt = LANG_TEXTS[lang]["get_2fa_prompt"]
+        
+    await update.message.reply_text(
+        twofa_txt,
+        parse_mode="HTML",
+        reply_markup=cancel_keyboard(uid)
+    )
+
+async def process_2fa_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    secret_key = update.message.text.strip()
+    context.user_data["mode"] = None
+    otp_code, clean_key = generate_2fa_code(secret_key)
+    if otp_code is None:
+        await update.message.reply_text(
+            LANG_TEXTS[lang]["2fa_invalid"],
+            parse_mode="HTML",
+            reply_markup=main_keyboard(uid)
         )
-        return top_ranges_by_app, None
+        return
+    now = datetime.now()
+    final_msg = (
+        f"⏳ <b>[ 2FA DECRYPTION COMPLETE ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<blockquote>🔑 SECRET_KEY: <code>{clean_key}</code></blockquote>\n"
+        f"<blockquote>🔢 PIN_CODE: <code>{otp_code}</code></blockquote>\n"
+        f"<blockquote>⏳ EXPIRES_IN: 30 SECONDS</blockquote>\n\n"
+        f"📅 {now.strftime('%d %B, %Y')} | {now.strftime('%I:%M %p')}"
+    )
+    await update.message.reply_text(final_msg, parse_mode="HTML", reply_markup=main_keyboard(uid))
 
-    api_key, base_url = get_api_credentials()
-    masked_key = f"{api_key[:6]}...{api_key[-6:]}" if len(api_key) > 12 else api_key
-    print(f"[DEBUG] fetch_top55_ranges_by_app() | API Key: {masked_key} | Base URL: {base_url}")
-    
-    for attempt in range(2):
-        try:
-            url = f"{base_url}/liveaccess?api_key={api_key}"
-            r = await client_async.get(
-                url,
-                timeout=httpx.Timeout(connect=4.0, read=10.0, write=4.0, pool=4.0)
-            )
-            print(f"[DEBUG] API Request to: {base_url}/liveaccess | Status: {r.status_code}")
-            
-            try:
-                data = r.json()
-            except Exception as json_err:
-                print(f"[DEBUG] JSON Decode Error: {json_err}. Raw text: {r.text[:500]}")
-                return None, f"JSONDecodeError: Expecting valid JSON, got HTML or bad response."
+# ==================== GET NUMBER INTERFACE ====================
 
-            top_ranges_by_app = {}
+def filter_important_services(services):
+    filtered = []
+    sc = load_sys_config()
+    active_map = sc.get("active_services", {})
+
+    for svc in services:
+        sid = svc.get("sid", "").strip().upper()
+        if not sid:
+            continue
             
-            ranges_dict = None
-            if isinstance(data, dict):
-                if "ranges" in data and isinstance(data["ranges"], dict):
-                    ranges_dict = data["ranges"]
-                elif "data" in data and isinstance(data["data"], dict) and "ranges" in data["data"] and isinstance(data["data"]["ranges"], dict):
-                    ranges_dict = data["data"]["ranges"]
+        if active_map.get(sid, True):
+            svc_copy = dict(svc)
+            logo_and_name = get_service_logo(sid)
             
-            if ranges_dict:
-                for app_raw, rng_list in ranges_dict.items():
-                    if not isinstance(rng_list, list):
-                        continue
-                    primary_app = get_clean_app_name(app_raw)
-                    icon = get_platform_icon(primary_app)
-                    if primary_app not in top_ranges_by_app:
-                        top_ranges_by_app[primary_app] = {"icon": icon, "ranges": [], "total_otps": 0}
-                    for rng in rng_list:
-                        if rng and rng not in top_ranges_by_app[primary_app]["ranges"]:
-                            top_ranges_by_app[primary_app]["ranges"].append(rng)
-                    top_ranges_by_app[primary_app]["total_otps"] = len(top_ranges_by_app[primary_app]["ranges"])
-            else:
-                services_list = []
-                if isinstance(data, dict):
-                    inner = data.get("data")
-                    if isinstance(inner, dict):
-                        services_list = inner.get("services") or inner.get("ranges") or []
-                    elif isinstance(inner, list):
-                        services_list = inner
-                    else:
-                        services_list = data.get("services") or data.get("ranges") or []
-                elif isinstance(data, list):
-                    services_list = data
+            if logo_and_name == "📩 SMS SERVICE" or logo_and_name.startswith("📩"):
+                logo_and_name = f"📱 {sid}"
                 
-                if isinstance(services_list, list):
-                    for rng_obj in services_list:
-                        if not isinstance(rng_obj, dict):
-                            continue
-                        primary_raw = rng_obj.get("sid") or rng_obj.get("service") or rng_obj.get("app") or "Unknown"
-                        rng_list = rng_obj.get("ranges", [])
-                        primary_app = get_clean_app_name(primary_raw)
-                        icon = get_platform_icon(primary_app)
-                        if primary_app not in top_ranges_by_app:
-                            top_ranges_by_app[primary_app] = {"icon": icon, "ranges": [], "total_otps": 0}
-                        for rng in rng_list:
-                            if rng and rng not in top_ranges_by_app[primary_app]["ranges"]:
-                                top_ranges_by_app[primary_app]["ranges"].append(rng)
-                        top_ranges_by_app[primary_app]["total_otps"] = len(top_ranges_by_app[primary_app]["ranges"])
-
-            top_ranges_by_app = dict(
-                sorted(top_ranges_by_app.items(),
-                       key=lambda x: len(x[1]["ranges"]), reverse=True)
-            )
-            return top_ranges_by_app, None
+            svc_copy["display_name"] = logo_and_name
+            svc_copy["matched_key"] = sid  
+            filtered.append(svc_copy)
             
-        except Exception as e:
-            print(f"[DEBUG] Connection Attempt {attempt+1} Error [{type(e).__name__}]: {e}")
-            if attempt == 0:
-                await asyncio.sleep(0.3)
+    return filtered
 
-    return None, "Server unreachable or invalid API key."
-
-def build_app_buttons_from_cache(top_ranges_by_app):
+def _build_services_keyboard(services, user_id):
     buttons = []
-    for app_name, info in top_ranges_by_app.items():
-        bold_name = make_bold_text(app_name)
-        emoji_key = app_name.lower().strip()
-        emoji_id = EMOJI_ID_MAP.get(emoji_key)
-        buttons.append([rbtn(bold_name, "primary", callback_data=f"sel_app_{app_name}", icon_custom_emoji_id=emoji_id)])
-    return buttons
+    for i, svc in enumerate(services):
+        sid = svc.get("sid", "").strip()
+        display_name = svc.get("display_name", sid)
+        emoji_key = svc.get("matched_key")
+        
+        buttons.append([
+            make_inline_keyboard_button(display_name, callback_data=f"svc_{i}", style="primary", emoji_key=emoji_key)
+        ])
+        
+    buttons.append([
+        make_inline_keyboard_button("❌ Close", callback_data="close_menu", style="danger", emoji_key="CLOSE")
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+def _build_countries_keyboard(ranges, sid, user_id):
+    lang = get_user_lang(user_id)
+    btns = []
+    seen = {}
+    for i, r in enumerate(ranges[:24]):
+        prefix = re.sub(r'[xX]+$', '', str(r)).strip()
+        prefix_clean = re.sub(r'\D', '', prefix)
+        flag, cname = get_country_info(prefix_clean)
+        label = f"{flag} {cname}"
+        
+        emoji_key = f"COUNTRY_{prefix_clean}"
+        if label not in seen:
+            seen[label] = i
+            callback_data = f"rng_{i}"
+            # কান্ট্রিতে ডাইনামিক প্রিমিয়াম ইমোজি সেট করা থাকলে তা পাঠানো হয়
+            if is_premium_emoji_set(emoji_key):
+                btns.append(make_inline_keyboard_button(label, callback_data=callback_data, style="primary", emoji_key=emoji_key))
+            else:
+                btns.append(make_inline_keyboard_button(label, callback_data=callback_data, style="primary"))
+                
+    rows = [btns[j:j+2] for j in range(0, len(btns), 2)]
+    back_lbl = "◀️ BACK" if lang == "en" else "◀️ ফিরে যান"
+    rows.append([make_inline_keyboard_button(back_lbl, callback_data="back_services", style="danger")])
+    return InlineKeyboardMarkup(rows)
 
 async def show_app_selection(update, context):
-    import time as _time
     uid = update.effective_user.id
+    lang = get_user_lang(uid)
     if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await update.message.reply_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(uid)
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
+        return
+    services = get_cached_services()
+    if not services:
+        await _do_liveaccess_fetch()
+        services = get_cached_services()
+    if not services:
+        err_msg = (
+            "⚠️ <b>[ ACCESS FAIL ]</b>\n\n⏳ Server modules are currently sleeping. Retry in a few seconds."
+            if lang == "en" else "⚠️ <b>[ সংযোগ ব্যর্থ ]</b>\n\n⏳ সার্ভার মডিউল বর্তমানে অফলাইন রয়েছে। কিছু সেকেন্ড পর চেষ্টা করুন।"
         )
+        await update.message.reply_text(err_msg, parse_mode="HTML", reply_markup=main_keyboard(uid))
         return
-
-    if is_under_maintenance(uid):
-        await update.message.reply_text(f"{p_em('stop')} <b>SYSTEM UNDER MAINTENANCE</b> {p_em('stop')}\n\nSorry, the bot is currently undergoing maintenance. Please try again later.", parse_mode="HTML")
-        return
-
-    is_joined = await is_user_joined_force_channels(uid, context)
-    if not is_joined:
-        await update.message.reply_text(
-            f"{p_em('channel')} <b>আপনাকে অবশ্যই আমাদের চ্যানেলে জয়েন করতে হবে!</b>\n\nনিচের বোতামগুলো ব্যবহার করে জয়েন করুন এবং চেক বোতামে ক্লিক করুন।",
-            parse_mode="HTML",
-            reply_markup=build_force_join_keyboard()
-        )
-        return
-
-    context.user_data.pop("top_ranges_by_app", None)
-
-    settings = load_settings()
-    auto_range_enabled = settings.get("auto_range", True)
-
-    cache_age = _time.monotonic() - _ranges_cache["updated_at"]
-    if auto_range_enabled and _ranges_cache["data"] and cache_age < 300:
-        top_ranges_by_app = _ranges_cache["data"]
-        context.user_data["top_ranges_by_app"] = top_ranges_by_app
-        buttons = build_app_buttons_from_cache(top_ranges_by_app)
-        keyboard = InlineKeyboardMarkup(buttons)
-        msg = f"{p_em('get_number_btn')} <b>SELECT APP TO GET</b>"
-        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=keyboard)
-        return
-
-    status = await update.message.reply_text(f"{p_em('waiting')} Loading ranges...")
-
-    top_ranges_by_app, err = await fetch_top55_ranges_by_app()
-    if err or not top_ranges_by_app:
-        top_ranges_by_app, err = await fetch_top55_ranges_by_app()
-
-    if err:
-        await status.edit_text(
-            f"{p_em('cross')} <b>Could not load ranges.</b>\n\n"
-            f"<blockquote>{p_em('cross')} {err}</blockquote>",
-            parse_mode="HTML"
-        )
-        return
-
-    if not top_ranges_by_app:
-        await status.edit_text(f"{p_em('cross')} No active ranges returned. Please ensure your configuration is correct.")
-        return
-
-    if auto_range_enabled:
-        _ranges_cache["data"] = top_ranges_by_app
-        _ranges_cache["updated_at"] = _time.monotonic()
         
-    context.user_data["top_ranges_by_app"] = top_ranges_by_app
-
-    buttons = build_app_buttons_from_cache(top_ranges_by_app)
-    keyboard = InlineKeyboardMarkup(buttons)
-    msg = f"{p_em('get_number_btn')} <b>SELECT APP TO GET</b>"
-    await status.edit_text(msg, parse_mode="HTML", reply_markup=keyboard)
-
-# ==================== TRAFFIC CONTROLLER ====================
-
-async def show_traffic(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await update.message.reply_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(uid)
-        )
-        return
-
-    if is_under_maintenance(uid):
-        await update.message.reply_text(f"{p_em('stop')} <b>SYSTEM UNDER MAINTENANCE</b> {p_em('stop')}", parse_mode="HTML")
-        return
-
-    is_joined = await is_user_joined_force_channels(uid, context)
-    if not is_joined:
-        await update.message.reply_text(
-            f"{p_em('channel')} <b>আপনাকে অবশ্যই আমাদের চ্যানেলে জয়েন করতে হবে!</b>\n\nনিচের বোতামগুলো ব্যবহার করে জয়েন করুন এবং চেক বোতামে ক্লিক করুন।",
-            parse_mode="HTML",
-            reply_markup=build_force_join_keyboard()
-        )
-        return
-
-    if not os.path.exists(ACTIVITY_LOGS_FILE):
-        await update.message.reply_text(
-            f"{p_em('live')} <b>Live Traffic (Last 1 Hours)</b>\n\n<i>No traffic logs recorded yet.</i>",
-            parse_mode="HTML"
-        )
-        return
-
-    try:
-        with open(ACTIVITY_LOGS_FILE, "r") as f:
-            logs = json.load(f)
-    except Exception:
-        logs = []
-
-    one_hour_ago = datetime.now() - timedelta(hours=1)
-    otp_logs = []
+    filtered_services = filter_important_services(services)
+    context.user_data["la_services"] = filtered_services
+    keyboard = _build_services_keyboard(filtered_services, uid)
     
-    for log in logs:
-        if log.get("action") == "OTP_RECEIVED":
-            ts_str = log.get("timestamp")
-            if ts_str:
-                try:
-                    ts = datetime.fromisoformat(ts_str)
-                    if ts >= one_hour_ago:
-                        otp_logs.append(log)
-                except Exception:
-                    pass
-
-    if not otp_logs:
-        await update.message.reply_text(
-            f"{p_em('live')} <b>Live Traffic (Last 1 Hours)</b>\n\n<i>No OTP transactions in the last hour.</i>",
-            parse_mode="HTML"
-        )
-        return
-
-    counts = {}
-    total_otps = 0
-    for log in otp_logs:
-        details = log.get("details", {})
-        num = details.get("number")
-        sms = details.get("sms")
-        if num and sms:
-            service = detect_service(sms).upper()
-            flag_html, country_name = get_country_info(num)
-            key = (service, flag_html, country_name)
-            counts[key] = counts.get(key, 0) + 1
-            total_otps += 1
-
-    if total_otps == 0:
-        await update.message.reply_text(
-            f"{p_em('live')} <b>Live Traffic (Last 1 Hours)</b>\n\n<i>No OTP transactions in the last hour.</i>",
-            parse_mode="HTML"
-        )
-        return
-
-    sorted_traffic = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-
-    lines = [
-        f"{p_em('live')} <b>Live Traffic (Last 1 Hours)</b>\n"
-    ]
-    
-    for (service, flag_html, country_name), count in sorted_traffic:
-        percentage = (count / total_otps) * 100
-        app_icon = get_platform_icon(service)
-        if not app_icon:
-            app_icon = p_em("status")
-        lines.append(f"{app_icon} <b>{service}</b> | {flag_html} {country_name} | {percentage:.1f}%")
-
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-
-# ==================== LEADERBOARD CONTROLLER ====================
-
-async def show_leaderboard_command(update, context):
-    stats = load_stats()
-    sorted_users = []
-    for u_id, u_stats in stats.items():
-        otp_count = len(u_stats.get("otps_received", []))
-        if otp_count > 0:
-            sorted_users.append((u_id, otp_count))
-    
-    sorted_users = sorted(sorted_users, key=lambda x: x[1], reverse=True)[:10]
-    
-    lines = [
-        f"{p_em('leader_board')} <b>OTP LEADERBOARD</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
-    ]
-    if sorted_users:
-        for idx, (user_id, count) in enumerate(sorted_users, 1):
-            users_db = load_data(USER_DATA_FILE)
-            u_info = users_db.get(str(user_id), {})
-            name = u_info.get("full_name") or u_info.get("username") or f"User ({user_id[-4:]})"
-            lines.append(f"<blockquote><b>#{idx}</b> {html.escape(name)} {p_em('status')} <code>{count} OTPs</code></blockquote>")
-    else:
-        lines.append("<i>No OTPs received yet. Take numbers and secure the chart!</i>")
-    
-    lines.append("━━━━━━━━━━━━━━━━━━━━━━━")
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-
-# ==================== SUPPORT CONTROLLER ====================
-
-async def support_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    settings = load_settings()
-    support_user = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-    support_text = (
-        f"{p_em('msg')} <b>SUPPORT HELP CENTER</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{p_em('link')} <b>CLICK THE BUTTON BELOW TO CONTACT SUPPORT</b> {p_em('link')}"
+    get_num_txt = get_dynamic_message_text("GET_NUMBER", lang)
+    if not get_num_txt:
+        get_num_txt = LANG_TEXTS[lang]["get_active_node"]
+        
+    await update.message.reply_text(
+        get_num_txt,
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
-    keyboard = InlineKeyboardMarkup([
-        [rbtn("SUPPORT TEAM", "success", url=f"https://t.me/{support_user.replace('@', '')}", icon_custom_emoji_id=EMOJI_ID_MAP.get("msg"))],
-        [rbtn("DEVELOPER", "primary", url="https://t.me/NETBOLDNETMAIR0", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"))]
-    ])
-    await update.message.reply_text(support_text, reply_markup=keyboard, parse_mode="HTML")
 
-# ==================== AUTO OTP MONITOR SECTION ====================
+# ==================== SYNC SERVICES TO CHANNEL ====================
+async def sync_services_to_channel(bot, channel_id, lang="bn"):
+    services = get_cached_services()
+    if not services:
+        await _do_liveaccess_fetch()
+        services = get_cached_services()
+    if not services:
+        return "❌ No services cached in database to post."
+    
+    filtered = filter_important_services(services)
+    if not filtered:
+        return "❌ Active services filter returned empty."
+
+    text = "📡 <b>[ LIVE SYSTEM NODES & COUNTRIES ]</b> 📡\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    for svc in filtered:
+        sid = svc.get("sid", "").strip().upper()
+        display_name = get_service_logo(sid)
+        ranges = svc.get("ranges", [])
+        
+        country_list = []
+        for r in ranges[:12]:
+            prefix = re.sub(r'[xX]+$', '', str(r)).strip()
+            prefix_clean = re.sub(r'\D', '', prefix)
+            flag, cname = get_country_info(prefix_clean)
+            country_list.append(f"{flag} {cname} (<code>{prefix}XXX</code>)")
+        
+        countries_str = ", ".join(country_list) if country_list else "None"
+        text += f"📱 <b>{display_name}</b>\n🌍 Range Nodes:\n   └─ {countries_str}\n\n"
+        
+    text += "━━━━━━━━━━━━━━━━━━━━━━\n📢 <i>Updated automatically via admin console.</i>"
+    
+    chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+    for chunk in chunks:
+        try:
+            await bot.send_message(chat_id=channel_id, text=chunk, parse_mode="HTML")
+        except Exception as e:
+            return f"❌ Failed to send block: {e}"
+    return f"✅ Successfully synchronized {len(filtered)} services & nodes with the channel!"
+
+
+# ==================== PAGINATED ALL COUNTRY LAYOUT GENERATOR ====================
+
+def _build_all_countries_keyboard(page=0):
+    items_per_page = 8
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    subset = COMMON_PREFIXES[start_idx:end_idx]
+    
+    btns = []
+    for pref in subset:
+        flag, name = get_country_info(pref)
+        emoji_key = f"COUNTRY_{pref}"
+        if is_premium_emoji_set(emoji_key):
+            btns.append(make_inline_keyboard_button(f"{flag} {name} (+{pref})", callback_data=f"ac_edit_{pref}", emoji_key=emoji_key))
+        else:
+            btns.append(make_inline_keyboard_button(f"{flag} {name} (+{pref})", callback_data=f"ac_edit_{pref}"))
+        
+    rows = [btns[i:i+2] for i in range(0, len(btns), 2)]
+    
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(make_inline_keyboard_button("◀️ Prev", callback_data=f"ac_all_list_{page-1}"))
+    if end_idx < len(COMMON_PREFIXES):
+        nav_buttons.append(make_inline_keyboard_button("Next ▶️", callback_data=f"ac_all_list_{page+1}"))
+        
+    if nav_buttons:
+        rows.append(nav_buttons)
+        
+    rows.append([
+        make_inline_keyboard_button("⌨️ Manual Prefix Input", callback_data="ac_custom_prefix_input"),
+        make_inline_keyboard_button("◀️ Back", callback_data="ac_main")
+    ])
+    return InlineKeyboardMarkup(rows)
+
+
+# ==================== AUTO MONITOR LOOP (DECRYPTER) ====================
 
 async def monitor_loop(app):
     while True:
         try:
-            api_key, base_url = get_api_credentials()
-            
-            if not api_key:
-                await asyncio.sleep(2.0)
-                continue
-                
-            r = await client_async.get(f"{base_url}/success_otp?api_key={api_key}")
-            
-            try:
-                res = r.json()
-            except Exception:
-                await asyncio.sleep(CHECK_INTERVAL)
-                continue
-            
-            otps = []
-            if isinstance(res, dict):
-                if "data" in res and isinstance(res["data"], list):
-                    otps = res["data"]
-                elif "otps" in res and isinstance(res["otps"], list):
-                    otps = res["otps"]
-                elif "data" in res and isinstance(res["data"], dict) and "otps" in res["data"]:
-                    otps = res["data"]["otps"]
-                else:
-                    otps = res.get("otps") or res.get("data") or []
-            elif isinstance(res, list):
-                otps = res
-
-            if otps:
+            r = await client_async.get(f"{BASE_URL}/api/success-otp-info")
+            res = r.json()
+            if "data" in res and "otps" in res["data"]:
+                otps = res["data"]["otps"]
                 paid_data = load_data(PAID_SMS_FILE)
                 range_db = load_data(DATA_RANGE_FILE)
                 paid_keys_set = set(paid_data.keys())
                 processed_in_session = set()
 
                 for otp in otps:
-                    if not isinstance(otp, dict):
-                        continue
-                    
-                    num = normalize_number(otp.get("number") or otp.get("phone") or otp.get("to") or "")
-                    full_sms = (
-                        otp.get('message') or 
-                        otp.get('otp') or 
-                        otp.get('sms') or 
-                        otp.get('text') or 
-                        otp.get('msg') or 
-                        otp.get('content') or 
-                        "No SMS Content"
-                    )
-                    
-                    raw_otp_code = (
-                        otp.get("otp_code") or 
-                        otp.get("code") or 
-                        otp.get("otp") or 
-                        otp.get("otp_code_raw") or
-                        otp.get("sms_code")
-                    )
-                    if raw_otp_code:
-                        otp_code = str(raw_otp_code).strip()
-                    else:
-                        otp_code = extract_otp(full_sms)
-
-                    otp_time = otp.get("created_at") or otp.get("timestamp") or ""
+                    num = normalize_number(otp.get("number", ""))
+                    full_sms = otp.get('message') or otp.get('otp') or otp.get('sms') or "No SMS Content"
+                    otp_code = extract_otp(full_sms)
                     otp_id = str(otp.get("otp_id", ""))
-                    
-                    sms_key = otp_id if otp_id else f"{num}_{otp_code}_{otp_time}"
+                    sms_key = otp_id if otp_id else f"{num}_{full_sms}"
 
-                    matched_key = None
-                    for active_num in active_numbers.keys():
-                        if numbers_match(num, active_num):
-                            matched_key = active_num
-                            break
-
-                    if (matched_key is not None and
+                    if (num in active_numbers and
                             sms_key not in paid_keys_set and
                             sms_key not in processed_in_session):
 
-                        details = active_numbers[matched_key]
+                        details = active_numbers[num]
                         paid_keys_set.add(sms_key)
                         processed_in_session.add(sms_key)
                         paid_data[sms_key] = {"uid": details["uid"], "otp": otp_code}
 
-                        settings = load_settings()
-                        otp_reward = settings.get("otp_reward", DEFAULT_OTP_REWARD)
-
-                        await update_db_balance(details["uid"], otp_reward)
+                        await update_db_balance(details["uid"], OTP_RATE)
                         add_otp_received(details["uid"])
-                        log_global_activity(details["uid"], "OTP_RECEIVED", {"number": matched_key, "otp": otp_code, "sms": full_sms})
+                        log_global_activity(details["uid"], "OTP_RECEIVED", {"number": num, "otp": otp_code, "sms": full_sms})
 
-                        num_range_info = range_db.get(matched_key, {}).get("range", "")
+                        num_range_info = range_db.get(num, {}).get("range", "")
                         if not num_range_info:
-                            num_range_info = active_numbers.get(matched_key, {}).get("range", "")
-                        if not num_range_info and matched_key:
-                            _d = re.sub(r'\D', '', str(matched_key))
+                            num_range_info = active_numbers.get(num, {}).get("range", "")
+                        if not num_range_info and num:
+                            _d = re.sub(r'\D', '', str(num))
                             num_range_info = (_d[:-3] + 'XXX') if len(_d) > 3 else (_d + 'XXX')
 
-                        country_flag, country_name = get_country_info(matched_key)
+                        country_flag, country_name = get_country_info(num)
                         service_name = detect_service(full_sms)
-                        clean_num = matched_key.replace('+', '').strip()
+                        service_logo = get_service_logo(service_name)
+                        clean_num = num.replace('+', '').strip()
                         full_number = f"+{clean_num}"
                         masked_number = f"+{mask_number(clean_num)}"
 
                         safe_full_sms = html.escape(str(full_sms))
                         safe_otp_code = html.escape(str(otp_code))
-                        formatted_otp = format_otp_display(otp_code)
 
-                        user_msg = (
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f" {p_em('done')} <b>OTP RECEIVED SUCCESSFULLY!</b> {p_em('done')}\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f"<blockquote><b>{p_em('get_number_btn')} Number :</b> <code>{full_number}</code></blockquote>\n"
-                            f"<blockquote><b>{p_em('waiting')} OTP    :</b> <code>{safe_otp_code}</code></blockquote>\n"
-                            f"<blockquote><b>{p_em('money')} Bonus  :</b> <code>+{otp_reward:.4f}$ Credited</code></blockquote>\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f" {p_em('msg')} <b>Full SMS:</b>\n"
-                            f"<code>{safe_full_sms}</code>\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-                        )
+                        # Page 4 OTP সফল রিসিভ মেসেজ কাস্টমাইজেশন লোড করা
+                        lang = get_user_lang(details["uid"])
+                        success_template = get_dynamic_message_text("DECRYPTION_SUCCESS", lang)
+                        packet_text = f"\n\n<blockquote>📩 <b>FULL PACKET:</b>\n<code>{safe_full_sms}</code></blockquote>"
+                        
+                        if not success_template:
+                            user_msg = (
+                                f"🛰️ <b>[ INCOMING PACKET DECRYPTED ]</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                f"🛰️ <b>NODE:</b> <code>{num_range_info}</code>\n"
+                                f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+                                f"📲 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                                f"📟 <b>ADDR:</b> <code>{full_number}</code>\n"
+                                f"🔑 <b>KEY:</b> <code>{safe_otp_code}</code>\n"
+                                f"{packet_text}\n"
+                                f"🪙 <b>Rewarded +{OTP_RATE:.2f} BDT to Wallet!</b>"
+                            )
+                        else:
+                            try:
+                                user_msg = success_template.format(
+                                    country_info=f"{country_flag} {country_name}",
+                                    range_text=num_range_info,
+                                    service_logo=service_logo,
+                                    clean_num=clean_num,
+                                    otp_safe=safe_otp_code,
+                                    packet_text=packet_text
+                                ) + f"\n🪙 <b>Rewarded +{OTP_RATE:.2f} BDT to Wallet!</b>"
+                            except Exception as e:
+                                user_msg = f"🛰️ <b>[ DECRYPTED ]</b> <code>{full_number}</code> | OTP: <code>{safe_otp_code}</code>"
 
                         group_msg = (
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f" {p_em('live')} <b>MINO LIVE OTP RECEIVED</b> {p_em('live')}\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f"<blockquote><b>{p_em('setting')} App Service :</b> <code>{service_name.upper()}</code></blockquote>\n"
-                            f"<blockquote><b>{p_em('get_number_btn')} Mobile No :</b> <code>{masked_number}</code></blockquote>\n"
-                            f"<blockquote><b>{p_em('status')} Country  :</b> {country_flag} {country_name}</blockquote>\n"
-                            f"<blockquote><b>{p_em('waiting')} OTP Code :</b> <code>{safe_otp_code}</code></blockquote>\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-                            f" {p_em('msg')} <b>FULL SMS MESSAGE:</b>\n"
-                            f"<code>{safe_full_sms}</code>\n"
-                            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
+                            f"🛰️ <b>[ INCOMING PACKET DECRYPTED ]</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"🛰️ <b>NODE:</b> <code>{num_range_info}</code>\n"
+                            f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+                            f"📲 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                            f"📟 <b>ADDR:</b> <code>{masked_number}</code>\n"
+                            f"🔑 <b>KEY:</b> <code>{safe_otp_code}</code>\n\n"
+                            f"<blockquote>📩 <b>FULL PACKET:</b>\n<code>{safe_full_sms}</code></blockquote>"
                         )
-
-                        btn_copy = rbtn(text=f"Copy OTP: {formatted_otp}", style="success", callback_data=f"copy_text_{otp_code.replace(' ', '')}")
-                        
-                        user_otp_keyboard = InlineKeyboardMarkup([
-                            [btn_copy]
-                        ])
 
                         group_buttons = InlineKeyboardMarkup([
                             [
-                                rbtn("PANEL", "primary", url=settings.get("channel_url", DEFAULT_CHANNEL_URL), icon_custom_emoji_id="5350396951407895212"),
-                                rbtn("DEVELOPER", "success", url="https://t.me/NETBOLDNETMAIR0", icon_custom_emoji_id="5271604874419647061")
+                                make_inline_keyboard_button("🤖 PANEL", url="https://t.me/Topotp3833767_bot", style="primary"),
+                                make_inline_keyboard_button("📢 CHANNEL", url="https://t.me/wertyu34567", style="success")
                             ]
                         ])
 
                         try:
-                            await app.bot.send_message(details["uid"], user_msg, parse_mode="HTML", reply_markup=user_otp_keyboard)
+                            await app.bot.send_message(details["uid"], user_msg, parse_mode="HTML")
                         except Exception as e:
                             print(f"❌ User Message Send Fail: {e}")
 
@@ -1840,60 +1431,151 @@ async def monitor_loop(app):
                         save_data(paid_data, PAID_SMS_FILE)
 
                 current_time = datetime.now()
-                active_numbers_changed = False
                 for num_key in list(active_numbers.keys()):
                     entry = active_numbers[num_key]
                     if 'timestamp' not in entry:
-                        entry['timestamp'] = current_time.isoformat()
-                        active_numbers_changed = True
-                    try:
-                        ts = datetime.fromisoformat(entry['timestamp'])
-                        if (current_time - ts).total_seconds() > 3600:
-                            del active_numbers[num_key]
-                            active_numbers_changed = True
-                    except:
-                        pass
-                if active_numbers_changed:
-                    save_active_numbers(active_numbers)
+                        entry['timestamp'] = current_time
+                    elif (current_time - entry['timestamp']).total_seconds() > 3600:
+                        del active_numbers[num_key]
 
         except Exception as e:
             print(f"Monitor Error: {e}")
         await asyncio.sleep(CHECK_INTERVAL)
 
-# ==================== WORKER & API SECTION ====================
+
+# ==================== FETCH NODES WORKERS (DIP-LINK RECOVERY) ====================
 
 async def fetch_number_async(range_str):
     try:
-        api_key, base_url = get_api_credentials()
-        url = f"{base_url}/getnumber"
-        
-        clean_rid = clean_range_id(range_str)
-        print(f"[DEBUG] fetch_number_async | Sending Clean rid: {clean_rid}")
-        
         r = await client_async.post(
-            url,
-            json={"api_key": api_key, "rid": clean_rid, "national": 1, "remove_plus": 1}
+            f"{BASE_URL}/api/getnum",
+            json={"range": range_str, "is_national": False}
         )
-        print(f"[DEBUG] POST Request to: {url} | Status: {r.status_code}")
-        print(f"[DEBUG] POST Response Body: {r.text}")
+        print(f"[getnum] Request Range: {range_str}")
+        print(f"[getnum] HTTP Status: {r.status_code}")
         
-        try:
-            data = r.json()
-        except Exception:
-            return None
+        data = r.json()
+        print(f"[getnum] Response Data: {data}")
+        
+        if "message" in data:
+            print(f"[getnum] API Response Message: {data['message']}")
             
-        if data.get("status") == "success":
-            return data.get("number")
-    except Exception as e: 
+        d = data.get("data") if isinstance(data.get("data"), dict) else {}
+        number = d.get("full_number") or d.get("number") or data.get("number") or data.get("full_number")
+        
+        if number:
+            return {
+                "number":  number,
+                "otp_now": bool(d.get("otp_now") or data.get("otp_now", False)),
+                "otp":     d.get("otp") or data.get("otp"),
+                "sms":     d.get("sms") or data.get("sms"),
+            }
+    except Exception as e:
         print(f"Fetch number error: {e}")
     return None
+
+
+async def fast_allocate_number(query, context, range_text, sid):
+    uid = query.from_user.id
+    lang = get_user_lang(uid)
+    if is_user_banned(uid):
+        await query.message.edit_text(LANG_TEXTS[lang]["banned"])
+        return
+    try:
+        res = await fetch_number_async(range_text)
+    except Exception as e:
+        await query.message.edit_text(f"❌ Server error: {str(e)[:100]}")
+        return
+    if not res or not res.get("number"):
+        await query.message.edit_text(
+            LANG_TEXTS[lang]["node_alloc_fail"],
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                make_inline_keyboard_button("◀️ BACK", callback_data="back_services", style="danger")
+            ]])
+        )
+        return
+
+    clean_num = normalize_number(res["number"])
+    add_number_taken(uid, 1)
+    last_range[uid] = range_text
+    last_sid[uid] = sid # PERSIST THE EXACT SERVICE ID CONTEXT
+    active_numbers[clean_num] = {"uid": uid, "range": range_text, "timestamp": datetime.now()}
+    save_number_range_info(uid, clean_num, range_text)
+
+    country_flag, country_name = get_country_info(clean_num)
+    service_logo = get_service_logo(sid if sid else "SMS SERVICE")
+
+    # ওটিপি ইনস্ট্যান্টলি ডিক্রিপ্ট হলে (Page 4 Message)
+    if res.get("otp_now") and res.get("otp"):
+        otp_safe = html.escape(str(res["otp"]))
+        sms_safe = html.escape(str(res.get("sms") or ""))
+        add_otp_received(uid)
+        
+        success_template = get_dynamic_message_text("DECRYPTION_SUCCESS", lang)
+        packet_text = f"\n\n<blockquote>📩 PACKET: <code>{sms_safe}</code></blockquote>" if sms_safe else ""
+        if not success_template:
+            text = (
+                f"🛰️ <b>[ NODE DECRYPTED SUCCESSFULLY ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🌍 <b>ORIGIN:</b> <code>{country_flag} {html.escape(country_name)}</code>\n"
+                f"🛰️ <b>NODE:</b> <code>{range_text}</code>\n"
+                f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                f"📟 <b>ADDR:</b> <code>+{clean_num}</code>\n"
+                f"🔑 <b>KEY:</b> <code>{otp_safe}</code>"
+                + packet_text
+            )
+        else:
+            try:
+                text = success_template.format(
+                    country_info=f"{country_flag} {html.escape(country_name)}",
+                    range_text=range_text,
+                    service_logo=service_logo,
+                    clean_num=clean_num,
+                    otp_safe=otp_safe,
+                    packet_text=packet_text
+                )
+            except Exception as e:
+                text = f"🛰️ <b>[ DECRYPTED ]</b> <code>+{clean_num}</code> | OTP: <code>{otp_safe}</code>"
+    # ওটিপি এর জন্য অপেক্ষমাণ থাকলে (Page 3 Message)
+    else:
+        pending_template = get_dynamic_message_text("ALLOCATION_PENDING", lang)
+        if not pending_template:
+            text = (
+                f"🛰️ <b>[ CYBER-NODE ALLOCATION ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🌍 <b>ORIGIN:</b> <code>{country_flag} {html.escape(country_name)}</code>\n"
+                f"🛰️ <b>NODE:</b> <code>{range_text}</code>\n"
+                f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                f"📟 <b>ADDR:</b> <code>+{clean_num}</code>\n\n"
+                f"📡 <b>SCAN STATUS: ⏳ SCANNING FOR DATA...</b>"
+            )
+        else:
+            try:
+                text = pending_template.format(
+                    country_info=f"{country_flag} {html.escape(country_name)}",
+                    range_text=range_text,
+                    service_logo=service_logo,
+                    clean_num=clean_num
+                )
+            except Exception as e:
+                text = f"🛰️ <b>[ SCANNING... ]</b> <code>+{clean_num}</code>"
+
+    keyboard = InlineKeyboardMarkup([
+        [make_inline_keyboard_button("🔄 SAME RANGE", callback_data="same_range", style="success")],
+        [make_inline_keyboard_button("📢 OTP GROUP", url="https://t.me/topotp76", style="primary")]
+    ])
+    try:
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    except Exception as e:
+        print(f"fast_allocate edit error: {e}")
 
 async def worker():
     while True:
         task = await request_queue.get()
         try:
             if task['type'] == 'process_numbers':
-                await process_numbers(task['update'], task['context'], task['range_text'], task['count'], task.get('edit_message'))
+                await process_numbers(task['update'], task['context'], task['range_text'], task['count'], task.get('sid'))
+            elif task['type'] == 'search_otp':
+                await perform_otp_search(task['update'], task['context'], task['target_num'])
             elif task['type'] == 'auto_number':
                 await process_auto_number(task['update'], task['context'], task['range_text'])
         except Exception as e:
@@ -1901,1110 +1583,841 @@ async def worker():
         finally:
             request_queue.task_done()
 
-# ==================== AUTO NUMBER FROM LINK SECTION ====================
+# ==================== DEEP LINK AUTO ALLOCATION ====================
 
 async def process_auto_number(update, context, range_text):
     uid = update.effective_user.id
     chat_id = update.effective_chat.id
-
+    lang = get_user_lang(uid)
     if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=(
-                f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-                f"<blockquote>{p_em('msg')} Support: {support}</blockquote>"
-            ), 
-            parse_mode="HTML", 
-            reply_markup=main_keyboard(uid)
-        )
+        await context.bot.send_message(chat_id=chat_id, text=LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
         return
-
-    if is_under_maintenance(uid):
-        await context.bot.send_message(chat_id=chat_id, text=f"{p_em('stop')} <b>SYSTEM UNDER MAINTENANCE</b>", parse_mode="HTML")
-        return
-
-    is_joined = await is_user_joined_force_channels(uid, context)
-    if not is_joined:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"{p_em('channel')} <b>আপনাকে আমাদের চ্যানেলে জয়েন করতে হবে!</b>",
-            parse_mode="HTML",
-            reply_markup=build_force_join_keyboard()
-        )
-        return
-
-    status_msg = await context.bot.send_message(chat_id=chat_id, text=f"{p_em('waiting')} SEARCHING...")
-
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="🔍 INJECTING NODE MODULES...")
     try:
-        result = await fetch_number_async(range_text)
-        generated_num = normalize_number(result) if result else None
-        
-        if not generated_num:
-            await status_msg.edit_text(f"{p_em('cross')} NO NUMBERS FOUND. TRY A VALID RANGE.")
+        res = await fetch_number_async(range_text)
+        if not res or not res.get("number"):
+            await status_msg.edit_text(LANG_TEXTS[lang]["node_alloc_fail"])
             return
-        
+        generated_num = normalize_number(res["number"])
         add_number_taken(uid, 1)
         last_range[uid] = range_text
-        active_numbers[generated_num] = {"uid": uid, "range": range_text, "timestamp": datetime.now().isoformat()}
-        save_active_numbers(active_numbers)
+        active_numbers[generated_num] = {"uid": uid, "range": range_text, "timestamp": datetime.now()}
         save_number_range_info(uid, generated_num, range_text)
-        
+
         country_flag, country_name = get_country_info(generated_num)
-        
-        final_text = (
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f" {p_em('get_number_btn')} <b>YOUR ACTIVE NUMBER DETAILS</b> {p_em('get_number_btn')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"<blockquote><b>{p_em('setting')} App     :</b> <code>{context.user_data.get('selected_app', 'Custom Range')}</code></blockquote>\n"
-            f"<blockquote><b>{p_em('status')} Country :</b> {country_flag} <code>{country_name}</code></blockquote>\n"
-            f"<blockquote><b>{p_em('get_number_btn')} Number  :</b> <code>+{generated_num}</code></blockquote>\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"{p_em('waiting')} <b>SMS STATUS:</b> Waiting for message... {p_em('waiting')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-        )
-        
-        settings = load_settings()
-        otp_group_url = settings.get("otp_group_url", DEFAULT_OTP_GROUP_URL)
-        
-        keyboard = [
-            [rbtn("Change Number", "primary", callback_data="same_range", icon_custom_emoji_id=EMOJI_ID_MAP.get("change_number"))],
-            [rbtn("Live OTP Group", "success", url=otp_group_url, icon_custom_emoji_id=EMOJI_ID_MAP.get("live"))]
-        ]
-        
-        await status_msg.edit_text(final_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-        
+        service_logo = get_service_logo("SMS SERVICE")
+
+        # Page 4 SUCCESS Message
+        if res.get("otp_now") and res.get("otp"):
+            instant_otp = html.escape(str(res["otp"]))
+            instant_sms = html.escape(str(res.get("sms") or ""))
+            add_otp_received(uid)
+            
+            success_template = get_dynamic_message_text("DECRYPTION_SUCCESS", lang)
+            packet_text = f"\n\n<blockquote>📩 PACKET: <code>{instant_sms}</code></blockquote>" if instant_sms else ""
+            if not success_template:
+                final_text = (
+                    f"🛰️ <b>[ NODE DECRYPTED SUCCESSFULLY ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+                    f"🛰️ <b>NODE:</b> <code>{range_text}</code>\n"
+                    f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                    f"📟 <b>ADDR:</b> <code>+{generated_num}</code>\n"
+                    f"🔑 <b>KEY:</b> <code>{instant_otp}</code>"
+                    + packet_text
+                )
+            else:
+                try:
+                    final_text = success_template.format(
+                        country_info=f"{country_flag} {country_name}",
+                        range_text=range_text,
+                        service_logo=service_logo,
+                        clean_num=generated_num,
+                        otp_safe=instant_otp,
+                        packet_text=packet_text
+                    )
+                except Exception as e:
+                    final_text = f"🛰️ <b>[ DECRYPTED ]</b> <code>+{generated_num}</code> | OTP: <code>{instant_otp}</code>"
+        # Page 3 PENDING Message
+        else:
+            pending_template = get_dynamic_message_text("ALLOCATION_PENDING", lang)
+            if not pending_template:
+                final_text = (
+                    f"🛰️ <b>[ CYBER-NODE ALLOCATION ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+                    f"🛰️ <b>NODE:</b> <code>{range_text}</code>\n"
+                    f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                    f"📟 <b>ADDR:</b> <code>+{generated_num}</code>\n\n"
+                    f"📡 <b>SCAN STATUS: ⏳ SCANNING FOR DATA...</b>"
+                )
+            else:
+                try:
+                    final_text = pending_template.format(
+                        country_info=f"{country_flag} {country_name}",
+                        range_text=range_text,
+                        service_logo=service_logo,
+                        clean_num=generated_num
+                    )
+                except Exception as e:
+                    final_text = f"🛰️ <b>[ SCANNING... ]</b> <code>+{generated_num}</code>"
+
+        keyboard = InlineKeyboardMarkup([
+            [make_inline_keyboard_button("🔄 SAME RANGE", callback_data="same_range", style="success")],
+            [make_inline_keyboard_button("📢 OTP GROUP", url="https://t.me/topotp76", style="primary")]
+        ])
+        await status_msg.edit_text(final_text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as e:
         print(f"Auto Number Error: {e}")
-        await status_msg.edit_text(f"{p_em('cross')} Error occurred: {str(e)}")
+        await status_msg.edit_text(f"❌ Error: {str(e)}")
 
-# ==================== USER PANEL SECTION ====================
+# ==================== MANUALLY TRIGGERED PROCESS ====================
 
-async def process_numbers(update, context, range_text, count, edit_message=None):
-    uid = update.effective_user.id
-    chat_id = update.effective_chat.id
-
+async def process_numbers(update_or_query, context, range_text, count, sid=None):
+    if isinstance(update_or_query, Update) and update_or_query.callback_query:
+        uid = update_or_query.callback_query.from_user.id
+        chat_id = update_or_query.callback_query.message.chat_id
+    else:
+        uid = update_or_query.effective_user.id
+        chat_id = update_or_query.effective_chat.id
+    lang = get_user_lang(uid)
     if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=(
-                f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-                f"<blockquote>{p_em('msg')} Support: {support}</blockquote>"
-            ), 
-            parse_mode="HTML", 
-            reply_markup=main_keyboard(uid)
-        )
+        await context.bot.send_message(chat_id=chat_id, text=LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
         return
 
-    if is_under_maintenance(uid):
-        await context.bot.send_message(chat_id=chat_id, text=f"{p_em('stop')} <b>SYSTEM UNDER MAINTENANCE</b>", parse_mode="HTML")
-        return
-
-    if is_joined := await is_user_joined_force_channels(uid, context):
-        pass
-    else:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"{p_em('channel')} <b>আপনাকে আমাদের চ্যানেলে জয়েন করতে হবে!</b>",
-            parse_mode="HTML",
-            reply_markup=build_force_join_keyboard()
-        )
-        return
-
-    if not edit_message:
-        status_msg = await context.bot.send_message(chat_id=chat_id, text=f"{p_em('waiting')} SEARCHING . . .")  
-    else:
-        status_msg = edit_message
-
+    status_msg = await context.bot.send_message(chat_id=chat_id, text="🔍 INTRUDING SYSTEM PATHS...")
     try:
         add_number_taken(uid, count)
-        last_range[uid] = range_text   
+        last_range[uid] = range_text
+        if sid:
+            last_sid[uid] = sid
+        tasks = [fetch_number_async(range_text) for _ in range(count)]
+        results = await asyncio.gather(*tasks)
+        valid_results = [r for r in results if r and r.get("number")]
 
-        print(f"[DEBUG] process_numbers() using range: {range_text}")
-        tasks = [fetch_number_async(range_text) for _ in range(count)]  
-        results = await asyncio.gather(*tasks)  
-        generated_nums = [normalize_number(n) for n in results if n]  
+        if not valid_results:
+            await status_msg.edit_text("❌ NO NUMBERS FOUND. TRY A VALID RANGE.")
+            return
 
-        if not generated_nums:  
-            err_text = f"{p_em('cross')} NO NUMBERS FOUND. TRY A VALID RANGE."
-            await status_msg.edit_text(err_text, parse_mode="HTML")
-            return  
+        num_entries = []
+        for r in valid_results:
+            clean_num = normalize_number(r["number"])
+            if clean_num:
+                active_numbers[clean_num] = {"uid": uid, "range": range_text, "timestamp": datetime.now()}
+                save_number_range_info(uid, clean_num, range_text)
+                num_entries.append({
+                    "num":     clean_num,
+                    "otp_now": r.get("otp_now", False),
+                    "otp":     r.get("otp"),
+                    "sms":     r.get("sms"),
+                })
 
-        for clean_num in generated_nums:  
-            active_numbers[clean_num] = {"uid": uid, "range": range_text, "timestamp": datetime.now().isoformat()}
-            save_number_range_info(uid, clean_num, range_text)
-        save_active_numbers(active_numbers)
-
-        country_flag, country_name = get_country_info(generated_nums[0])
-        
+        country_flag, country_name = get_country_info(num_entries[0]["num"])
+        service_logo = get_service_logo(sid if sid else detect_service(range_text))
         num_lines = []
-        for idx, g_num in enumerate(generated_nums, 1):
-            num_lines.append(f"<blockquote>{p_em('get_number_btn')} <b>Number {idx}:</b> <code>+{g_num}</code></blockquote>")
+        for entry in num_entries:
+            if entry["otp_now"] and entry["otp"]:
+                otp_safe = html.escape(str(entry["otp"]))
+                sms_safe = html.escape(str(entry.get("sms") or ""))
+                add_otp_received(uid)
+                line = (
+                    f"<blockquote>📟 ADDR: <code>+{entry['num']}</code>\n"
+                    f"🔑 KEY: <code>{otp_safe}</code>"
+                    + (f"\n📩 PACKET: <code>{sms_safe}</code>" if sms_safe else "")
+                    + "</blockquote>"
+                )
+            else:
+                line = f"<blockquote>📟 ADDR: <code>+{entry['num']}</code></blockquote>"
+            num_lines.append(line)
 
-        app_name = context.user_data.get('selected_app', 'Custom Range')
-        
+        num_list_text = "\n".join(num_lines)
+        any_instant = any(e["otp_now"] and e["otp"] for e in num_entries)
+        sms_status = "🟢 ACTIVE DECRYPT" if any_instant else "📡 SCAN STATUS: ⏳ SCANNING FOR DATA..."
+
         final_text = (
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f" {p_em('get_number_btn')} <b>YOUR ACTIVE NUMBER DETAILS</b> {p_em('get_number_btn')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"<blockquote><b>{p_em('setting')} App     :</b> <code>{app_name}</code></blockquote>\n"
-            f"<blockquote><b>{p_em('status')} Country :</b> {country_flag} <code>{country_name}</code></blockquote>\n"
-            + "\n".join(num_lines) + "\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"{p_em('waiting')} <b>SMS STATUS:</b> Waiting for message... {p_em('waiting')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-        )  
-
-        settings = load_settings()
-        otp_group_url = settings.get("otp_group_url", DEFAULT_OTP_GROUP_URL)
-
-        keyboard = [
-            [rbtn("SAME RANGE", "primary", callback_data="same_range", icon_custom_emoji_id=EMOJI_ID_MAP.get("change_number"))],
-            [rbtn("OTP GROUP", "success", url=otp_group_url, icon_custom_emoji_id=EMOJI_ID_MAP.get("live"))]
-        ]
-
-        await status_msg.edit_text(final_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-            
+            f"🛰️ <b>[ CYBER-NODE ALLOCATION ]</b> 🛰️\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+            f"🛰️ <b>NODE:</b> <code>{range_text}</code>\n"
+            f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n\n"
+            f"📋 <b>DECRYPTED CHANNELS:</b>\n"
+            f"{num_list_text}\n\n"
+            f"<b>{sms_status}</b>"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [make_inline_keyboard_button("🔄 SAME RANGE", callback_data="same_range", style="success")],
+            [make_inline_keyboard_button("📢 OTP GROUP", url="https://t.me/topotp76", style="primary")]
+        ])
+        await status_msg.edit_text(final_text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as e:
         print(f"Process Number Error: {e}")
-        await status_msg.edit_text(f"{p_em('cross')} System Error: {str(e)}", parse_mode="HTML")
+        await status_msg.edit_text(f"❌ Error: {str(e)}")
 
-# ==================== DYNAMIC FORCE JOIN INTERACTIVE SYSTEM ====================
+# ==================== PERFORM DECRYPTED OTP SEARCH ====================
 
-async def p_em_or_emoji(flag, flag_fallback):
-    return p_em(flag, flag_fallback)
-
-async def is_user_joined_force_channels(user_id, context):
-    settings = load_settings()
-    if not settings.get("force_join_enabled", False):
-        return True
-    if user_id in ADMINS:
-        return True
-    channels = settings.get("force_join_channels", [])
-    if not channels:
-        return True
-    for ch in channels:
-        try:
-            member = await context.bot.get_chat_member(chat_id=ch, user_id=user_id)
-            if member.status not in ["member", "administrator", "creator"]:
-                return False
-        except Exception:
-            return False
-    return True
-
-def build_force_join_keyboard():
-    settings = load_settings()
-    channels = settings.get("force_join_channels", [])
-    buttons = []
-    for idx, ch in enumerate(channels, 1):
-        clean_ch = ch.replace("@", "")
-        buttons.append([rbtn(f"Join Channel {idx}", "primary", url=f"https://t.me/{clean_ch}")])
-    buttons.append([rbtn("Check Joined", "success", callback_data="check_force_join")])
-    return InlineKeyboardMarkup(buttons)
-
-async def manage_force_join_menu(update_or_query, context, is_callback=False):
-    settings = load_settings()
-    channels = settings.get("force_join_channels", [])
-    
-    text = (
-        f"{p_em('link')} <b>Force Join Channels Manager</b>\n\n"
-        "এখানে আপনার সচল ফোর্স জয়েন চ্যানেলসমূহ রয়েছে। বট ব্যবহারের পূর্বে ইউজারদের অবশ্যই এখানে জয়েন করতে হবে।\n\n"
-        "<b>সচল চ্যানেলসমূহ:</b>\n"
-    )
-    if channels:
-        for idx, ch in enumerate(channels, 1):
-            text += f"{idx}. <code>{ch}</code>\n"
-    else:
-        text += "<i>কোনো ফোর্স জয়েন চ্যানেল কনফিগার করা নেই।</i>\n"
-        
-    status = "Enabled" if settings.get("force_join_enabled", False) else "Disabled"
-    text += f"\n<b>সিস্টেম স্ট্যাটাস:</b> {status}"
-    
-    buttons = []
-    for ch in channels:
-        buttons.append([rbtn(f"Delete {ch}", "danger", callback_data=f"del_fj_{ch}")])
-        
-    buttons.append([rbtn("Add Channel", "success", callback_data="add_fj_channel")])
-    buttons.append([rbtn("Toggle FJ System", "primary", callback_data="toggle_fj_system")])
-    
-    keyboard = InlineKeyboardMarkup(buttons)
-    
-    if is_callback:
-        await update_or_query.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
-    else:
-        await update_or_query.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
-
-# ==================== ADMIN DYNAMIC MANUAL RANGE PANEL ====================
-
-async def show_manual_ranges_menu(update_or_query, context, is_callback=False):
-    settings = load_settings()
-    auto_status = "ON" if settings.get("auto_range", True) else "OFF"
-    manual_data = load_manual_ranges()
-    
-    text = (
-        f"{p_em('setting')} <b>MANUAL RANGE MANAGER</b> {p_em('setting')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚙️ <b>Auto Range System:</b> <code>{auto_status}</code>\n"
-        f"💡 <i>(Auto Range OFF থাকলে বট আপনার অ্যাডমিন প্যানেলের সার্ভিসগুলো লোড করবে।)</i>\n\n"
-        f"<b>কনফিগার করা সার্ভিসসমূহ:</b>\n"
-    )
-    
-    if manual_data:
-        for app, ranges in manual_data.items():
-            icon = get_platform_icon(app) or "📱"
-            text += f"<blockquote>{icon} <b>{app}:</b> {len(ranges)} ranges</blockquote>\n"
-    else:
-        text += "<i>কোনো ম্যানুয়াল সার্ভিস সেট করা নেই।</i>\n"
-        
-    buttons = [
-        [
-            rbtn("➕ Add Service", "success", callback_data="man_add_service"),
-            rbtn("❌ Delete Service", "danger", callback_data="man_del_service_list")
-        ],
-        [
-            rbtn("➕ Add Range", "primary", callback_data="man_add_range_list"),
-            rbtn("❌ Delete Range", "danger", callback_data="man_del_range_select_service")
-        ],
-        [
-            rbtn("🔄 Toggle Auto Range", "primary", callback_data="toggle_auto_range_callback")
-        ]
-    ]
-    
-    keyboard = InlineKeyboardMarkup(buttons)
-    
-    if is_callback:
-        await update_or_query.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
-    else:
-        await update_or_query.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
-
-# ==================== WITHDRAW FUNCTIONS & SETTERS ====================
-
-async def set_withdrawal_method_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def perform_otp_search(update, context, target_num):
     uid = update.effective_user.id
+    lang = get_user_lang(uid)
     if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await update.message.reply_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(uid)
-        )
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
         return
-        
-    keyboard = InlineKeyboardMarkup([
-        [
-            rbtn("Bkash", "primary", callback_data="setmethod_Bkash", icon_custom_emoji_id=EMOJI_ID_MAP.get("bkash")),
-            rbtn("Nagad", "primary", callback_data="setmethod_Nagad", icon_custom_emoji_id=EMOJI_ID_MAP.get("nagad"))
-        ],
-        [
-            rbtn("Rocket", "primary", callback_data="setmethod_Rocket", icon_custom_emoji_id=EMOJI_ID_MAP.get("rocket")),
-            rbtn("Binance", "primary", callback_data="setmethod_Binance", icon_custom_emoji_id=EMOJI_ID_MAP.get("binance"))
-        ]
-    ])
+    status_msg = await update.message.reply_text(LANG_TEXTS[lang]["search_otp_searching"])
+    try:
+        r = await client_async.get(f"{BASE_URL}/api/success-otp-info")
+        res = r.json()
+        if "data" in res and "otps" in res["data"]:
+            all_otps = res["data"]["otps"]
+            found_otps = [o for o in all_otps if normalize_number(o.get("number", "")) == target_num]
+
+            if not found_otps:
+                await status_msg.delete()
+                err_text = LANG_TEXTS[lang]["search_otp_not_found"].format(num=target_num)
+                await update.message.reply_text(err_text, parse_mode="Markdown", reply_markup=main_keyboard(uid))
+            else:
+                await status_msg.delete()
+                paid_data = load_data(PAID_SMS_FILE)
+                for o in found_otps:
+                    full_sms = o.get('message') or o.get('otp') or o.get('sms') or "No Content"
+                    otp_code = extract_otp(full_sms)
+                    otp_id = str(o.get("otp_id", ""))
+                    sms_key = otp_id if otp_id else f"{target_num}_{full_sms}"
+
+                    if sms_key in paid_data:
+                        payment_status = "❌ CORE ALREADY HARVESTED" if lang == "en" else "❌ এটি ইতিমধ্যে রিওয়ার্ড করা হয়েছে"
+                    else:
+                        await update_db_balance(uid, OTP_RATE)
+                        add_otp_received(uid)
+                        paid_data[sms_key] = {"uid": str(uid), "otp": otp_code}
+                        payment_status = f"💵 Reward +{OTP_RATE:.2f} BDT Added to Balance!"
+
+                    save_data(paid_data, PAID_SMS_FILE)
+                    country_flag, country_name = get_country_info(target_num)
+                    service_name = detect_service(full_sms)
+                    service_logo = get_service_logo(service_name)
+
+                    msg = (
+                        f"♻️ <b>[ ENCRYPTED DATA RECOVERED ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"🌍 <b>ORIGIN:</b> <code>{country_flag} {country_name}</code>\n"
+                        f"📱 <b>TARGET:</b> <code>{service_logo}</code>\n"
+                        f"📟 <b>ADDR:</b> <code>+{target_num}</code>\n"
+                        f"🔑 <b>KEY:</b> <code>{html.escape(otp_code)}</code>\n\n"
+                        f"<blockquote>📩 <b>FULL SMS PACKET:</b>\n<code>{html.escape(str(full_sms))}</code></blockquote>\n"
+                        f"<b>{payment_status}</b>"
+                    )
+                    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=main_keyboard(uid))
+        else:
+            await status_msg.edit_text("❌ Database connectivity failure.")
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Error: {str(e)}")
+
+# ==================== REFER AND EARN SECTION ====================
+
+async def refer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    if is_user_banned(uid):
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
+        return
+    bot_info = await context.bot.get_me()
+    referral_link = f"https://t.me/{bot_info.username}?start={uid}"
+    successful_refers = get_referral_count(uid)
+    total_reward = float(successful_refers) * REFERRAL_PRICE
+
+    refer_msg = get_dynamic_message_text("REFER", lang)
+    if not refer_msg:
+        if lang == "bn":
+            refer_msg = (
+                f"🎁 <b>[ রেফারেল সেন্টার ]</b> 🎁\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<blockquote>👥 সফল রেফারেল: <code>{successful_refers}</code>\n"
+                f"🪙 অর্জিত রিওয়ার্ড: <code>{format_balance(total_reward)} BDT</code></blockquote>\n\n"
+                f"🔗 <b>আপনার রেফারেল লিংক:</b>\n"
+                f"<blockquote><code>{referral_link}</code></blockquote>\n\n"
+                f"<i>বন্ধুদের আমন্ত্রণ জানান এবং প্রতিটি আমন্ত্রণে এক্সট্রা রিওয়ার্ড লাভ করুন।</i>"
+            )
+        else:
+            refer_msg = (
+                f"🎁 <b>[ REFERRAL PORTAL ]</b> 🎁\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<blockquote>👥 Successful Invites: <code>{successful_refers}</code>\n"
+                f"🪙 Harvested Income: <code>{format_balance(total_reward)} BDT</code></blockquote>\n\n"
+                f"🔗 <b>YOUR REFERRAL LINK:</b>\n"
+                f"<blockquote><code>{referral_link}</code></blockquote>\n\n"
+                f"<i>Share and replicate system node access with friends to earn commission.</i>"
+            )
+    else:
+        try:
+            refer_msg = refer_msg.format(
+                successful_refers=successful_refers,
+                total_reward=format_balance(total_reward),
+                referral_link=referral_link
+            )
+        except Exception as e:
+            print(f"Format referral custom msg failed: {e}")
+
     await update.message.reply_text(
-        f"{p_em('money')} <b>SELECT YOUR WITHDRAWAL METHOD</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Please select a withdrawal method from the options below. "
-        "Once set, your withdrawal requests will automatically use this method.",
+        refer_msg,
         parse_mode="HTML",
-        reply_markup=keyboard
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup([[
+            make_inline_keyboard_button("👥 INVITED USERS REPORT", callback_data=f"my_ref_{uid}", style="primary")
+        ]])
     )
+
+# ==================== WITHDRAWAL FLOW ====================
+
+async def withdraw_method_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    
+    normalized = normalize_input_text(text)
+    if normalized in M_CANCEL:
+        context.user_data["withdraw_mode"] = None
+        await update.message.reply_text("❌ TRANSACTION ABORTED", reply_markup=main_keyboard(uid))
+        return
+
+    # বিকাশ এবং রকেট/নগদ এর ডাইনামিক লেবেল ভ্যালিডেশন
+    bkash_variants = get_normalized_dynamic_labels("BKASH") + ["BKASH"]
+    nagad_variants = get_normalized_dynamic_labels("NAGAD") + ["NAGAD"]
+    
+    if normalized in bkash_variants:
+        context.user_data["withdraw_method"] = "BKASH"
+        context.user_data["withdraw_mode"] = "amount"
+        await update.message.reply_text(
+            LANG_TEXTS[lang]["withdraw_amount_prompt"].format(min_val=MIN_WITHDRAW),
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+    elif normalized in nagad_variants:
+        context.user_data["withdraw_method"] = "NAGAD"
+        context.user_data["withdraw_mode"] = "amount"
+        await update.message.reply_text(
+            LANG_TEXTS[lang]["withdraw_amount_prompt"].format(min_val=MIN_WITHDRAW),
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+    else:
+        await update.message.reply_text("⚠️ Gateway unrecognized!", reply_markup=withdraw_method_keyboard(uid))
 
 async def withdraw_amount_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = unstyle_text(update.message.text.strip())
+    text = update.message.text.strip()
     uid = update.effective_user.id
+    lang = get_user_lang(uid)
     
-    if text == "CANCEL":
+    normalized = normalize_input_text(text)
+    if normalized in M_CANCEL:
         context.user_data["withdraw_mode"] = None
-        context.user_data["withdraw_method"] = None
-        await update.message.reply_text(f"{p_em('cross')} WITHDRAW CANCELLED\n\n{p_em('home')} BACK TO MENU", reply_markup=main_keyboard(uid))
+        await update.message.reply_text("❌ TRANSACTION ABORTED", reply_markup=main_keyboard(uid))
         return
-    
     try:
         amount = float(text)
     except:
-        await update.message.reply_text(f"{p_em('cross')} PLEASE SEND A VALID AMOUNT!", reply_markup=cancel_keyboard())
+        await update.message.reply_text("⚠️ Invalid numerical value!", reply_markup=cancel_keyboard(uid))
         return
-    
     balance = get_user(uid)['balance']
-    min_w, max_w = get_withdraw_limits()
-    
-    if amount < min_w or amount > max_w:
-        await update.message.reply_text(f"{p_em('down')} MINIMUM WITHDRAW {min_w}$ \n\n{p_em('up')} MAX WITHDRAWAL {max_w}$", reply_markup=cancel_keyboard())
+    if amount < MIN_WITHDRAW or amount > MAX_WITHDRAW:
+        await update.message.reply_text(f"📉 RANGE LIMITS: MIN: {MIN_WITHDRAW} BDT | MAX: {MAX_WITHDRAW} BDT", reply_markup=cancel_keyboard(uid))
         return
-    
     if amount > balance:
-        await update.message.reply_text(f"{p_em('cross')} YOU DO NOT HAVE ENOUGH BALANCE !", reply_markup=cancel_keyboard())
+        await update.message.reply_text("🚫 VALUATION INSUFFICIENT!", reply_markup=cancel_keyboard(uid))
         return
-    
     context.user_data["withdraw_amount"] = amount
     context.user_data["withdraw_mode"] = "number"
-    msg = (
-        f"{p_em('get_number_btn')} PLEASE SEND YOUR ACCOUNT NUMBER !\n\n"
-        f"<blockquote>💡 EXAMPLE: 17XXXXXXXX</blockquote>"
+    await update.message.reply_text(
+        LANG_TEXTS[lang]["withdraw_number_prompt"],
+        parse_mode="HTML",
+        reply_markup=cancel_keyboard(uid)
     )
-    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=cancel_keyboard())
 
 async def withdraw_number_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = unstyle_text(update.message.text.strip())
+    text = update.message.text.strip()
     uid = update.effective_user.id
+    lang = get_user_lang(uid)
     
-    if text == "CANCEL":
+    normalized = normalize_input_text(text)
+    if normalized in M_CANCEL:
         context.user_data["withdraw_mode"] = None
-        context.user_data["withdraw_method"] = None
-        context.user_data["withdraw_amount"] = None
-        await update.message.reply_text(f"{p_em('cross')} WITHDRAW CANCELLED\n\n{p_em('home')} BACK TO MENU", reply_markup=main_keyboard(uid))
+        await update.message.reply_text("❌ TRANSACTION ABORTED", reply_markup=main_keyboard(uid))
         return
-    
+    if not is_valid_bangladesh_number(text):
+        await update.message.reply_text("⚠️ FORMAT CONFLICT! MUST BE 017XXXXXXXX", reply_markup=cancel_keyboard(uid))
+        return
+
     method = context.user_data.get("withdraw_method")
     amount = context.user_data.get("withdraw_amount")
     payment_number = text
     payment_id = generate_payment_id()
-    
-    user_payment_msg = (
-        f"{p_em('money')} <b>PAYMENT DETAILS</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<blockquote>{p_em('status')} METHOD: {method}</blockquote>\n"
-        f"<blockquote>{p_em('get_number_btn')} YOUR NUMBER: {payment_number}</blockquote>\n\n"
-        f"<blockquote>{p_em('status')} IF DETAILS ARE CORRECT, CONFIRM.</blockquote>"
-    )
-    
-    confirm_keyboard = InlineKeyboardMarkup([
-        [
-            rbtn("CANCEL", "danger", callback_data="withdraw_cancel", icon_custom_emoji_id=EMOJI_ID_MAP.get("cross")),
-            rbtn("CONFIRM", "success", callback_data="withdraw_confirm", icon_custom_emoji_id=EMOJI_ID_MAP.get("done"))
-        ]
-    ])
-    
     context.user_data["temp_withdraw"] = {
-        "method": method,
-        "amount": amount,
-        "number": payment_number,
-        "payment_id": payment_id
+        "method": method, "amount": amount,
+        "number": payment_number, "payment_id": payment_id
     }
+    proposal_msg = LANG_TEXTS[lang]["withdraw_proposed"].format(method=method, num=payment_number, amount=amount)
     
     await update.message.reply_text(
-        user_payment_msg,
+        proposal_msg,
         parse_mode="HTML",
-        reply_markup=confirm_keyboard
+        reply_markup=InlineKeyboardMarkup([[
+            make_inline_keyboard_button("❌ ABORT", callback_data="withdraw_cancel", style="danger"),
+            make_inline_keyboard_button("✅ CONFIRM", callback_data="withdraw_confirm", style="success")
+        ]])
     )
 
 async def process_withdraw_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     uid = query.from_user.id
     await query.answer()
-    
     temp_data = context.user_data.get("temp_withdraw")
     if not temp_data:
-        await query.message.reply_text(f"{p_em('cross')} SESSION EXPIRED. PLEASE TRY AGAIN.", reply_markup=main_keyboard(uid))
+        await query.message.reply_text("⚠️ TRANSACTION PACKET EXPIRED.", reply_markup=main_keyboard(uid))
         return
-    
+
     method = temp_data["method"]
     amount = temp_data["amount"]
     payment_number = temp_data["number"]
     payment_id = temp_data["payment_id"]
-    
-    new_balance = await update_db_balance(uid, -amount)
-    
-    withdraw_requests = load_withdraw_requests()
-    withdraw_requests[str(payment_id)] = {
-        "user_id": uid,
-        "method": method,
-        "amount": amount,
-        "number": payment_number,
-        "payment_id": payment_id,
-        "status": "pending",
-        "timestamp": datetime.now().isoformat()
-    }
-    save_withdraw_requests(withdraw_requests)
-    
-    user_confirm_msg = (
-        f"{p_em('money')} <b>WITHDRAW REQUEST SENT</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<blockquote>Withdraw request successfully submitted to admin. Please wait.</blockquote>\n\n"
-        f"<blockquote>{p_em('status')} METHOD: <code>{method}</code>\n"
-        f"{p_em('get_number_btn')} NUMBER: <code>{payment_number}</code>\n"
-        f"{p_em('money')} AMOUNT: <code>{format_balance(amount)}$</code>\n"
-        f"{p_em('link')} PAYMENT ID: <code>{payment_id}</code></blockquote>"
-    )
-    await query.message.edit_text(user_confirm_msg, parse_mode="HTML")
 
-    success_back_msg = (
-        f"{p_em('gift_box')} <b>WITHDRAW REQUEST SUBMIT SUCCESSFUL</b> {p_em('gift_box')}\n\n"
-        f"{p_em('home')} <b>BACK TO MENU</b>"
+    await update_db_balance(uid, -amount)
+    wr = load_withdraw_requests()
+    wr[str(payment_id)] = {
+        "user_id": uid, "method": method, "amount": amount,
+        "number": payment_number, "payment_id": payment_id,
+        "status": "pending", "timestamp": datetime.now().isoformat()
+    }
+    save_withdraw_requests(wr)
+
+    await query.message.edit_text(
+        f"`✅` <b>TRANSACTION FORWARDED TO CORES</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"<blockquote>📝 GATEWAY: <code>{method}</code>\n"
+        f"📞 TARGET_ADDR: <code>{payment_number}</code>\n"
+        f"💰 VALUATION: <code>{format_balance(amount)} BDT</code>\n"
+        f"🆔 HASH_ID: <code>{payment_id}</code></blockquote>",
+        parse_mode="HTML"
     )
-    await context.bot.send_message(
-        chat_id=uid,
-        text=success_back_msg,
-        parse_mode="HTML",
-        reply_markup=main_keyboard(uid)
-    )
+    await context.bot.send_message(uid, "🎉 REQUEST SUBMITTED SUCCESSFULLY!", reply_markup=main_keyboard(uid))
 
     admin_msg = (
-        f"{p_em('money')} <b>NEW WITHDRAW REQUEST</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<blockquote>{p_em('link')} USER ID : <code>{uid}</code>\n"
-        f"{p_em('status')} METHOD: <code>{method}</code>\n"
-        f"{p_em('get_number_btn')} NUMBER: <code>{payment_number}</code>\n"
-        f"{p_em('link')} ID : <code>{payment_id}</code></blockquote>\n\n"
-        f"<blockquote>{p_em('money')} AMOUNT: <code>{format_balance(amount)}$</code></blockquote>"
+        f"✅ <b>[ NEW WITHDRAW REQUEST ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🆔 NODE_USER: <code>{uid}</code>\n"
+        f"📝 GATEWAY: <code>{method}</code>\n"
+        f"📞 TARGET_ADDR: <code>{payment_number}</code>\n"
+        f"💰 VALUATION: <code>{format_balance(amount)} BDT</code>\n"
+        f"🆔 HASH_ID: <code>{payment_id}</code>"
     )
-    
-    admin_decision_keyboard = InlineKeyboardMarkup([
-        [
-            rbtn("CANCEL", "danger", callback_data=f"admin_reject_{payment_id}", icon_custom_emoji_id=EMOJI_ID_MAP.get("cross")),
-            rbtn("CONFIRM", "success", callback_data=f"admin_approve_{payment_id}", icon_custom_emoji_id=EMOJI_ID_MAP.get("done"))
-        ]
-    ])
-    
+    admin_kb = InlineKeyboardMarkup([[
+        make_inline_keyboard_button("❌ REJECT", callback_data=f"admin_reject_{payment_id}", style="danger"),
+        make_inline_keyboard_button("✅ APPROVE", callback_data=f"admin_approve_{payment_id}", style="success")
+    ]])
     for admin_id in ADMINS:
         try:
-            await context.bot.send_message(
-                admin_id, 
-                admin_msg, 
-                parse_mode="HTML", 
-                reply_markup=admin_decision_keyboard
-            )
+            await context.bot.send_message(admin_id, admin_msg, parse_mode="HTML", reply_markup=admin_kb)
         except Exception as e:
-            print(f"Failed to send to admin {admin_id}: {e}")
-    
+            print(f"Admin notify fail {admin_id}: {e}")
+
     context.user_data["temp_withdraw"] = None
     context.user_data["withdraw_mode"] = None
-    context.user_data["withdraw_method"] = None
-    context.user_data["withdraw_amount"] = None
 
 async def process_withdraw_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     uid = query.from_user.id
     await query.answer()
-    
     context.user_data["temp_withdraw"] = None
     context.user_data["withdraw_mode"] = None
-    context.user_data["withdraw_method"] = None
-    context.user_data["withdraw_amount"] = None
-    
-    await query.message.edit_text(f"{p_em('cross')} WITHDRAW CANCELLED\n\n{p_em('home')} BACK TO MENU")
-    await context.bot.send_message(uid, "PLEASE USE THE BUTTONS BELOW :", reply_markup=main_keyboard(uid))
+    await query.message.edit_text("❌ TRANSACTION TERMINATED")
+    await context.bot.send_message(uid, "🔹 SECURE CONTROLS RE-ENGAGED:", reply_markup=main_keyboard(uid))
 
-# ==================== ADMIN PANEL - WITHDRAW APPROVAL ====================
+# ==================== ADMIN PANEL - BACKEND CONTROLS ====================
 
-async def admin_approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_id: str):
+async def admin_approve_withdraw(update, context, payment_id):
     query = update.callback_query
     await query.answer()
-    
-    withdraw_requests = load_withdraw_requests()
-    if payment_id not in withdraw_requests:
-        await query.message.reply_text(f"{p_em('cross')} WITHDRAW REQUEST NOT FOUND!")
+    wr = load_withdraw_requests()
+    if payment_id not in wr:
+        await query.message.reply_text("⚠️ Request not found.")
         return
-    
-    request_data = withdraw_requests[payment_id]
-    uid = request_data["user_id"]
-    method = request_data["method"]
-    amount = request_data["amount"]
-    payment_number = request_data["number"]
-    
-    withdraw_requests[payment_id]["status"] = "approved"
-    save_withdraw_requests(withdraw_requests)
-    
-    user_final_msg = (
-        f"{p_em('done')} <b>WITHDRAWAL SUCCESS</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "<blockquote>আপনার উইথড্র রিকোয়েস্টটি সফলভাবে অ্যাপ্রুভ করা হয়েছে!</blockquote>\n\n"
-        f"<blockquote>{p_em('status')} METHOD: <code>{method}</code>\n"
-        f"{p_em('get_number_btn')} NUMBER: <code>{payment_number}</code>\n"
-        f"{p_em('money')} AMOUNT: <code>{format_balance(amount)}$</code>\n"
-        f"{p_em('link')} ID: <code>{payment_id}</code></blockquote>"
-    )
-    
+    rd = wr[payment_id]
+    uid = rd["user_id"]
+    method = rd["method"]
+    amount = rd["amount"]
+    payment_number = rd["number"]
+    wr[payment_id]["status"] = "approved"
+    save_withdraw_requests(wr)
     try:
-        await context.bot.send_message(uid, user_final_msg, parse_mode="HTML")
+        await context.bot.send_message(
+            uid,
+            f"🎉 <b>[ TRANSACTION DISPATCHED ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<blockquote>📝 GATEWAY: <code>{method}</code>\n"
+            f"📞 TARGET: <code>{payment_number}</code>\n"
+            f"💰 CREDITS: <code>{format_balance(amount)} BDT</code></blockquote>",
+            parse_mode="HTML"
+        )
     except:
         pass
-    
-    await query.message.edit_text(
-        f"WITHDRAW REQUEST CONFIRMED SUCCESSFULLY\n\n"
-        f"Payment ID: {payment_id}\n"
-        f"User ID: {uid}\n"
-        f"Amount: {format_balance(amount)}$\n\n"
-        f"Payment has been approved!",
-        parse_mode="Markdown"
-    )
+        
+    sc = load_sys_config()
+    ch_id = sc.get("official_channel_id")
+    if ch_id:
+        masked_user = mask_number(str(uid))
+        proof_msg = (
+            f"💳 <b>[ WITHDRAW SUCCESSFUL ]</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👤 <b>User Node:</b> <code>{masked_user}</code>\n"
+            f"💳 <b>Method:</b> <code>{method}</code>\n"
+            f"💰 <b>Amount:</b> <code>{format_balance(amount)} BDT</code>\n"
+            f"✅ <b>Status:</b> <code>PAID (SUCCESS)</code>\n\n"
+            f"🎉 Congratulations to the user!"
+        )
+        try:
+            await context.bot.send_message(chat_id=ch_id, text=proof_msg, parse_mode="HTML")
+        except Exception as e:
+            print(f"Failed to post withdraw proof to channel {ch_id}: {e}")
 
-async def admin_reject_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE, payment_id: str):
+    await query.message.edit_text(f"✅ APPROVED | Node User: {uid} | Val: {format_balance(amount)} BDT")
+
+async def admin_reject_withdraw(update, context, payment_id):
     query = update.callback_query
     await query.answer()
-    
-    withdraw_requests = load_withdraw_requests()
-    if payment_id not in withdraw_requests:
-        await query.message.reply_text(f"{p_em('cross')} WITHDRAW REQUEST NOT FOUND!")
+    wr = load_withdraw_requests()
+    if payment_id not in wr:
+        await query.message.reply_text("⚠️ Request not found.")
         return
-    
-    request_data = withdraw_requests[payment_id]
-    uid = request_data["user_id"]
-    method = request_data["method"]
-    amount = request_data["amount"]
-    payment_number = request_data["number"]
-    
-    withdraw_requests[payment_id]["status"] = "rejected"
-    save_withdraw_requests(withdraw_requests)
-    
-    await update_db_balance(uid, amount)
-    
-    user_reject_msg = (
-        f"{p_em('cross')} WITHDRAWAL REQUEST REJECTED\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "⚠️ Sorry, the admin has rejected your withdrawal request. Funds are refunded to your balance.\n\n"
-        f"💵 METHOD: {method}\n"
-        f"📞 NUMBER: {payment_number}\n"
-        f"💵 AMOUNT: {format_balance(amount)}$"
-    )
-    
+    rd = wr[payment_id]
+    uid = rd["user_id"]
+    amount = rd["amount"]
+    wr[payment_id]["status"] = "rejected"
+    save_withdraw_requests(wr)
     try:
-        await context.bot.send_message(uid, user_reject_msg, parse_mode="Markdown")
+        await context.bot.send_message(uid, "❌ **[ TRANSACTION DENIED ]**\n\nTransaction rejected by admin core.", parse_mode="Markdown")
     except:
         pass
-    
-    await query.message.edit_text(
-        f"WITHDRAW REQUEST CANCELLED & REFUNDED\n\n"
-        f"Payment ID: {payment_id}\n"
-        f"User ID: {uid}\n"
-        f"Amount: {format_balance(amount)}$"
-    )
+    await query.message.edit_text(f"❌ REJECTED | Node User: {uid} | Val: {format_balance(amount)} BDT")
 
-# ==================== ADMIN PANEL - BALANCE MANAGEMENT ====================
-
-async def admin_add_balance_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_add_balance_start(update, context):
     context.user_data["add_balance_mode"] = True
     context.user_data["remove_balance_mode"] = False
-    await update.message.reply_text(f"{p_em('money')} **SEND USER ID TO ADD BALANCE FOR USER!** {p_em('money')}\n\n📝 PLEASE SEND THE TELEGRAM USER ID:", parse_mode="Markdown")
+    await update.message.reply_text("💰 Send target user ID to force inject balance:")
 
-async def admin_remove_balance_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_remove_balance_start(update, context):
     context.user_data["remove_balance_mode"] = True
     context.user_data["add_balance_mode"] = False
-    await update.message.reply_text(f"{p_em('money')} **SEND USER ID TO REMOVE BALANCE FROM USER!** {p_em('money')}\n\n📝 PLEASE SEND THE TELEGRAM USER ID:", parse_mode="Markdown")
+    await update.message.reply_text("💸 Send target user ID to retrieve balance:")
 
-async def process_add_balance_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid_to_add = unstyle_text(update.message.text.strip())
-    
+async def process_add_balance_user(update, context):
+    uid_to_add = update.message.text.strip()
     if not uid_to_add.isdigit():
-        await update.message.reply_text(f"{p_em('cross')} INVALID USER ID! PLEASE SEND A VALID NUMERIC TELEGRAM ID.")
+        await update.message.reply_text("❌ Invalid ID.")
         return
-    
     uid_to_add_int = int(uid_to_add)
-    
     if not user_exists(uid_to_add_int):
-        await update.message.reply_text(f"{p_em('cross')} USER NOT FOUND! THIS USER HAS NEVER STARTED THE BOT.")
+        await update.message.reply_text("❌ User not found.")
         context.user_data["add_balance_mode"] = False
         return
-    
     context.user_data["pending_add_user"] = uid_to_add_int
-    await update.message.reply_text(f"{p_em('money')} **SEND AMOUNT TO ADD BALANCE:**\n\n💵 ENTER AMOUNT IN $:", parse_mode="Markdown")
+    await update.message.reply_text("💵 Send amount to inject:")
 
-async def process_remove_balance_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid_to_remove = unstyle_text(update.message.text.strip())
-    
+async def process_remove_balance_user(update, context):
+    uid_to_remove = update.message.text.strip()
     if not uid_to_remove.isdigit():
-        await update.message.reply_text(f"{p_em('cross')} INVALID USER ID! PLEASE SEND A VALID NUMERIC TELEGRAM ID.")
+        await update.message.reply_text("❌ Invalid ID.")
         return
-    
     uid_to_remove_int = int(uid_to_remove)
-    
     if not user_exists(uid_to_remove_int):
-        await update.message.reply_text(f"{p_em('cross')} USER NOT FOUND! THIS USER HAS NEVER STARTED THE BOT.")
+        await update.message.reply_text("❌ User not found.")
         context.user_data["remove_balance_mode"] = False
         return
-    
     context.user_data["pending_remove_user"] = uid_to_remove_int
-    await update.message.reply_text(f"{p_em('money')} **SEND AMOUNT TO REMOVE BALANCE:**\n\n💵 ENTER AMOUNT IN $:", parse_mode="Markdown")
+    await update.message.reply_text("💸 Send amount to remove:")
 
-async def process_add_balance_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    amount_text = unstyle_text(update.message.text.strip())
-    
+async def process_add_balance_amount(update, context):
     try:
-        amount = float(amount_text)
-        if amount <= 0:
-            await update.message.reply_text(f"{p_em('cross')} INVALID AMOUNT! PLEASE SEND A POSITIVE NUMBER.")
-            return
+        amount = float(update.message.text.strip())
+        if amount <= 0: raise ValueError
     except:
-        await update.message.reply_text(f"{p_em('cross')} INVALID AMOUNT! PLEASE SEND A VALID NUMBER.")
+        await update.message.reply_text("❌ Invalid amount.")
         return
-    
     uid = context.user_data.get("pending_add_user")
     if not uid:
         context.user_data["add_balance_mode"] = False
-        await update.message.reply_text(f"{p_em('cross')} SESSION EXPIRED. PLEASE TRY AGAIN.")
+        await update.message.reply_text("⚠️ Session expired.")
         return
-    
-    user_data = get_user(uid)
-    old_balance = user_data.get("balance", 0)
     new_balance = await update_db_balance(uid, amount)
-    
-    admin_msg = (
-        f"{p_em('done')} **ADD BALANCE SUCCESSFUL** {p_em('done')}\n\n"
-        f"🆔 USER ID : `{uid}`\n"
-        f"💵 ADD BALANCE AMOUNT : `{format_balance(amount)}$`\n"
-        f"📊 PREVIOUS BALANCE : `{format_balance(old_balance)}$`\n"
-        f"📈 NEW BALANCE : `{format_balance(new_balance)}$`"
+    await update.message.reply_text(
+        f"✅ **[ BALANCE INJECTED ]**\n🆔 Target User: `{uid}`\n"
+        f"💰 Transferred: `{format_balance(amount)} BDT`\n"
+        f"📈 New Balance: `{format_balance(new_balance)} BDT`",
+        parse_mode="Markdown"
     )
-    
-    admin_keyboard = InlineKeyboardMarkup([
-        [rbtn("COPY USER ID", "primary", callback_data=f"copy_id_{uid}")]
-    ])
-    
-    await update.message.reply_text(admin_msg, parse_mode="Markdown", reply_markup=admin_keyboard)
-    
-    user_msg = (
-        f"{p_em('gift_box')} **THE ADMIN HAS ADDED MONEY TO YOUR ACCOUNT** {p_em('gift_box')}\n\n"
-        f"💵 **AMOUNT OF MONEY :** `{format_balance(amount)}$`\n"
-        f"📊 **YOUR NEW BALANCE :** `{format_balance(new_balance)}$`"
-    )
-    
     try:
-        await context.bot.send_message(uid, user_msg, parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"{p_em('cross')} COULD NOT NOTIFY USER. BUT BALANCE ADDED SUCCESSFULLY.")
-    
+        await context.bot.send_message(uid, f"🎉 Admin injected `{format_balance(amount)} BDT` credits to your account!\n💵 Wallet Balance: `{format_balance(new_balance)} BDT`", parse_mode="Markdown")
+    except:
+        pass
     context.user_data["add_balance_mode"] = False
     context.user_data["pending_add_user"] = None
 
-async def process_remove_balance_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    amount_text = unstyle_text(update.message.text.strip())
-    
+async def process_remove_balance_amount(update, context):
     try:
-        amount = float(amount_text)
-        if amount <= 0:
-            await update.message.reply_text(f"{p_em('cross')} INVALID AMOUNT! PLEASE SEND A POSITIVE NUMBER.")
-            return
+        amount = float(update.message.text.strip())
+        if amount <= 0: raise ValueError
     except:
-        await update.message.reply_text(f"{p_em('cross')} INVALID AMOUNT! PLEASE SEND A VALID NUMBER.")
+        await update.message.reply_text("❌ Invalid amount.")
         return
-    
     uid = context.user_data.get("pending_remove_user")
     if not uid:
         context.user_data["remove_balance_mode"] = False
-        await update.message.reply_text(f"{p_em('cross')} SESSION EXPIRED. PLEASE TRY AGAIN.")
+        await update.message.reply_text("⚠️ Session expired.")
         return
-    
-    user_data = get_user(uid)
-    old_balance = user_data.get("balance", 0)
-    
+    old_balance = get_user(uid).get("balance", 0)
     if amount > old_balance:
-        error_msg = (
-            f"{p_em('cross')} **INSUFFICIENT BALANCE!** {p_em('cross')}\n\n"
-            f"🆔 USER ID : `{uid}`\n"
-            f"💵 CURRENT BALANCE : `{format_balance(old_balance)}$`\n"
-            f"💵 REQUESTED REMOVE : `{format_balance(amount)}$`"
-        )
-        await update.message.reply_text(error_msg, parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Target balance only has {format_balance(old_balance)} BDT.")
         context.user_data["remove_balance_mode"] = False
         context.user_data["pending_remove_user"] = None
         return
-    
     new_balance = await update_db_balance(uid, -amount)
-    
-    admin_msg = (
-        f"{p_em('done')} **REMOVE BALANCE SUCCESSFUL** {p_em('done')}\n\n"
-        f"🆔 USER ID : `{uid}`\n"
-        f"💵 REMOVE BALANCE AMOUNT : `{format_balance(amount)}$`\n"
-        f"📊 PREVIOUS BALANCE : `{format_balance(old_balance)}$`\n"
-        f"📈 NEW BALANCE : `{format_balance(new_balance)}$`"
+    await update.message.reply_text(
+        f"✅ **[ BALANCE PURGED ]**\n🆔 Target User: `{uid}`\n"
+        f"💸 Deducted: `{format_balance(amount)} BDT`\n"
+        f"📈 New Balance: `{format_balance(new_balance)} BDT`",
+        parse_mode="Markdown"
     )
-    
-    admin_keyboard = InlineKeyboardMarkup([
-        [rbtn("COPY USER ID", "primary", callback_data=f"copy_id_{uid}")]
-    ])
-    
-    await update.message.reply_text(admin_msg, parse_mode="Markdown", reply_markup=admin_keyboard)
-    
-    user_msg = (
-        f"{p_em('stop')} **ADMIN HAS REMOVED MONEY FROM YOUR ACCOUNT** {p_em('stop')}\n\n"
-        f"💵 **AMOUNT REMOVED :** `{format_balance(amount)}$`\n"
-        f"📊 **YOUR NEW BALANCE :** `{format_balance(new_balance)}$`"
-    )
-    
     try:
-        await context.bot.send_message(uid, user_msg, parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"{p_em('cross')} COULD NOT NOTIFY USER. BUT BALANCE REMOVED SUCCESSFULLY.")
-    
+        await context.bot.send_message(uid, f"⚠️ Admin extracted `{format_balance(amount)} BDT` from your account!\n💵 Wallet Balance: `{format_balance(new_balance)} BDT`", parse_mode="Markdown")
+    except:
+        pass
     context.user_data["remove_balance_mode"] = False
     context.user_data["pending_remove_user"] = None
 
-# ==================== ADMIN PANEL - BAN/UNBAN ====================
-
-async def admin_ban_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_ban_user_start(update, context):
     context.user_data["admin_ban_mode"] = True
     context.user_data["admin_unban_mode"] = False
-    await update.message.reply_text(f"{p_em('ban')} SENT TELEGRAM ID TO BAN USER {p_em('ban')}\n\n📝 Please send the Telegram User ID you want to ban:")
+    await update.message.reply_text("🚫 Send target user ID to enforce BAN status:")
 
-async def admin_unban_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def admin_unban_user_start(update, context):
     context.user_data["admin_unban_mode"] = True
     context.user_data["admin_ban_mode"] = False
-    await update.message.reply_text(f"{p_em('done')} SENT UNBAN USER ID {p_em('done')}\n\n📝 Please send the Telegram User ID you want to unban:")
+    await update.message.reply_text("🔓 Send target user ID to clear BAN status:")
 
-async def process_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid_to_ban = unstyle_text(update.message.text.strip())
-    
+async def process_ban_user(update, context):
+    uid_to_ban = update.message.text.strip()
     if not uid_to_ban.isdigit():
-        await update.message.reply_text(f"{p_em('cross')} INVALID USER ID! Please send a valid numeric Telegram ID.")
+        await update.message.reply_text("❌ Invalid ID.")
         return
-    
     uid_to_ban_int = int(uid_to_ban)
-    
     if not user_exists(uid_to_ban_int):
-        await update.message.reply_text(f"{p_em('cross')} USER NOT FOUND IN DATABASE.")
+        await update.message.reply_text("❌ User not found.")
         context.user_data["admin_ban_mode"] = False
         return
-    
     if is_user_banned(uid_to_ban_int):
-        await update.message.reply_text(f"{p_em('cross')} USER IS ALREADY BANNED.")
+        await update.message.reply_text("⚠️ Node is already blocked.")
         context.user_data["admin_ban_mode"] = False
         return
-    
     ban_user(uid_to_ban_int)
-    
     try:
-        await context.bot.send_message(
-            uid_to_ban_int,
-            f"{p_em('ban')} **YOU HAVE BEEN BANNED** {p_em('ban')}\n\n"
-            "❌ YOU HAVE BEEN BANNED FROM USING THIS BOT.",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(uid_to_ban_int, "🚫 **Your access profile has been suspended.**", parse_mode="Markdown")
     except:
         pass
-    
-    await update.message.reply_text(
-        f"{p_em('done')} USER BAN SUCCESSFUL {p_em('done')}\n\n"
-        f"Banned User ID: {uid_to_ban}",
-        parse_mode="Markdown",
-        reply_markup=admin_security_join_keyboard()
-    )
+    await update.message.reply_text(f"✅ User `{uid_to_ban}` banned successfully!", parse_mode="Markdown", reply_markup=system_config_keyboard())
     context.user_data["admin_ban_mode"] = False
 
-async def process_unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid_to_unban = unstyle_text(update.message.text.strip())
-    
+async def process_unban_user(update, context):
+    uid_to_unban = update.message.text.strip()
     if not uid_to_unban.isdigit():
-        await update.message.reply_text(f"{p_em('cross')} INVALID USER ID! Please send a valid numeric Telegram ID.")
+        await update.message.reply_text("❌ Invalid ID.")
         return
-    
     uid_to_unban_int = int(uid_to_unban)
-    
     if not is_user_banned(uid_to_unban_int):
-        await update.message.reply_text(f"{p_em('cross')} THIS USER IS NOT BANNED.")
+        await update.message.reply_text("⚠️ User node is active.")
         context.user_data["admin_unban_mode"] = False
         return
-    
     unban_user(uid_to_unban_int)
-    
     try:
-        await context.bot.send_message(
-            uid_to_unban_int,
-            f"{p_em('done')} **YOU HAVE BEEN UNBANNED** {p_em('done')}\n\n"
-            "🎁 CONGRATULATIONS! YOU HAVE BEEN UNBANNED.",
-            parse_mode="Markdown"
-        )
+        await context.bot.send_message(uid_to_unban_int, "✅ **Your access profile suspension has been lifted!**", parse_mode="Markdown")
     except:
         pass
-    
-    await update.message.reply_text(
-        f"{p_em('done')} USER UNBAN SUCCESSFUL {p_em('done')}\n\n"
-        f"Unbanned User ID: {uid_to_unban}",
-        parse_mode="Markdown",
-        reply_markup=admin_security_join_keyboard()
-    )
+    await update.message.reply_text(f"✅ User `{uid_to_unban}` unbanned successfully!", parse_mode="Markdown", reply_markup=system_config_keyboard())
     context.user_data["admin_unban_mode"] = False
 
-async def show_banned_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_banned_users_list(update, context):
     banned_list = load_banned_users()
-    
     if not banned_list:
-        await update.message.reply_text(f"{p_em('status')} **BANNED USER LIST** {p_em('status')}\n\n✅ No users are currently banned.", parse_mode="Markdown", reply_markup=admin_security_join_keyboard())
+        await update.message.reply_text("📜 No banned nodes detected.", reply_markup=system_config_keyboard())
         return
-    
-    banned_text = f"{p_em('status')} **BANNED USER LIST** {p_em('status')}\n\n"
+    text = "📜 **BLOCKED SYSTEM NODES**\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     for i, uid in enumerate(banned_list, 1):
-        banned_text += f"{i}. User ID: {uid}\n"
-    
-    banned_text += f"\n📊 Total Banned Users: {len(banned_list)}"
-    
-    await update.message.reply_text(banned_text, parse_mode="Markdown", reply_markup=admin_security_join_keyboard())
+        text += f"{i}. `{uid}`\n"
+    text += f"\n📊 Total: {len(banned_list)}"
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=system_config_keyboard())
 
-# ==================== ADMIN DYNAMIC SETTERS ====================
+# ==================== LIVE SERVICES CONTROLLER (ADMIN) ====================
 
-async def admin_set_max_numbers_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid): return
-    context.user_data["admin_edit_mode"] = "max_limit"
-    await update.message.reply_text(
-        f"{p_em('setting')} <b>SET MAX NUMBERS LIMIT (BATCH BATCH)</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "<blockquote>প্রিতিটি ইউজার একসাথে সর্বোচ্চ কতটি নাম্বার তুলতে পারবেন তা টাইপ করে পাঠান:</blockquote>",
-        parse_mode="HTML",
-        reply_markup=cancel_keyboard()
+async def show_admin_services_menu(update, context):
+    services = get_cached_services()
+    if not services:
+        await _do_liveaccess_fetch()
+        services = get_cached_services()
+        
+    sc = load_sys_config()
+    active_map = sc.get("active_services", {})
+    
+    sids = sorted(list(set(svc.get("sid", "").strip().upper() for svc in services if svc.get("sid"))))
+    
+    if not sids:
+        sids = ["INSTAGRAM", "TELEGRAM", "WHATSAPP", "FACEBOOK", "TIKTOK"]
+
+    buttons = []
+    for key in sids:
+        is_active = active_map.get(key, True)  
+        status_lbl = "🟢 ON" if is_active else "🔴 OFF"
+        btn_txt = f"{key} [{status_lbl}]"
+        
+        emoji_id = sc.get("service_emojis", {}).get(key, "")
+        emoji_indicator = "✨" if emoji_id else "✏️"
+        
+        buttons.append([
+            make_inline_keyboard_button(btn_txt, callback_data=f"toggle_svc_{key}"),
+            make_inline_keyboard_button(f"{emoji_indicator} Edit Emoji", callback_data=f"edit_emoji_{key}")
+        ])
+    
+    buttons.append([make_inline_keyboard_button("❌ Close", callback_data="close_menu", style="danger")])
+    
+    msg_text = (
+        "📡 <b>LIVE SERVICES MANAGER</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Click status to toggle, or click edit to set/modify custom Premium Emoji ID for each service:"
     )
+    await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
 
-async def admin_set_cooldown_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid): return
-    context.user_data["admin_edit_mode"] = "cooldown"
-    await update.message.reply_text(
-        f"{p_em('waiting')} <b>SET COOLDOWN TIME</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "<blockquote>নাম্বার রিকোয়েস্ট এর কুলডাউন সেকেন্ড সংখ্যায় পাঠান (যেমন: 4.0):</blockquote>",
-        parse_mode="HTML",
-        reply_markup=cancel_keyboard()
-    )
+# ==================== CUSTOM ENGINE: TEXTS & KEYBOARDS SYSTEM ====================
 
-async def admin_edit_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if not is_admin(uid): return
+async def show_admin_customizer_menu(update, context):
+    sc = load_sys_config()
+    custom_buttons = sc.get("custom_buttons", {})
     
-    keyboard = InlineKeyboardMarkup([
-        [rbtn("Edit Welcome Msg", "primary", callback_data="edit_txt_welcome", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting"))],
-        [rbtn("Edit OTP Group Link", "primary", callback_data="edit_txt_otpgroup", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"))],
-        [rbtn("Edit Channel Link", "primary", callback_data="edit_txt_channel", icon_custom_emoji_id=EMOJI_ID_MAP.get("channel"))],
-        [rbtn("Edit Support Username", "primary", callback_data="edit_txt_support", icon_custom_emoji_id=EMOJI_ID_MAP.get("msg"))],
-        [
-            rbtn("Edit API Key", "primary", callback_data="edit_api_key", icon_custom_emoji_id=EMOJI_ID_MAP.get("setting")),
-            rbtn("Edit API Base URL", "primary", callback_data="edit_api_url", icon_custom_emoji_id=EMOJI_ID_MAP.get("link"))
-        ],
-        [rbtn("Back", "danger", callback_data="admin_back_to_config", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"))]
-    ])
+    buttons = []
+    # কাস্টমাইজার পেজে সব বাটন ও পেজের চমৎকার একক কলাম তালিকা
+    for key in custom_buttons.keys():
+        display_title = CUSTOMIZER_HUMAN_NAMES.get(key, f"✏️ {key}")
+        buttons.append([
+            make_inline_keyboard_button(display_title, callback_data=f"cust_select_{key}")
+        ])
+    buttons.append([make_inline_keyboard_button("❌ Close", callback_data="close_menu", style="danger")])
     
-    await update.message.reply_text(
-        f"{p_em('setting')} <b>EDIT LINKS & TEXTS SYSTEM</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "নিচের বোতামগুলো থেকে সিলেক্ট করুন আপনি কোন লেখা বা লিংক পরিবর্তন করতে চান:",
-        parse_mode="HTML",
-        reply_markup=keyboard
+    msg_text = (
+        "📝 <b>SYSTEM CUSTOMIZER ENGINE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "নিচের যে বাটন বা টেক্সটটি এডিট করতে চান—তা সিলেক্ট করুন:"
     )
+    await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
 
-# ==================== MESSAGE HANDLER SECTION ====================
+# ==================== MAIN CORE MESSAGE HANDLER ====================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     uid = update.effective_user.id
-    raw_text = update.message.text.strip()
-    
-    text = unstyle_text(raw_text)
+    text = update.message.text.strip()
+    lang = get_user_lang(uid)
 
-    if text in MENU_BUTTONS or text == "CANCEL":
-        context.user_data.pop("withdraw_mode", None)
-        context.user_data.pop("withdraw_method", None)
-        context.user_data.pop("withdraw_amount", None)
-        context.user_data.pop("admin_edit_mode", None)
-        context.user_data.pop("add_balance_mode", None)
-        context.user_data.pop("pending_add_user", None)
-        context.user_data.pop("remove_balance_mode", None)
-        context.user_data.pop("pending_remove_user", None)
-        context.user_data.pop("admin_ban_mode", None)
-        context.user_data.pop("admin_unban_mode", None)
-        context.user_data.pop("mode", None)
-        context.user_data.pop("broadcast_mode", None)
+    normalized_text = normalize_input_text(text)
 
+    if normalized_text in M_CANCEL:
+        context.user_data.clear()
+        cancel_txt = "❌ OPERATION ABORTED" if lang == "en" else "❌ অপারেশন বাতিল করা হয়েছে"
+        await update.message.reply_text(cancel_txt, reply_markup=main_keyboard(uid))
+        return
+
+    if not is_admin(uid) and is_user_banned(uid):
+        await update.message.reply_text(LANG_TEXTS[lang]["banned"], reply_markup=main_keyboard(uid))
+        return
+
+    if not is_user_verified(uid) and not is_admin(uid):
+        await send_verification_captcha(update.effective_chat.id, context, uid)
+        return
+
+    if context.user_data.get("admin_channel_update_mode") and is_admin(uid):
+        context.user_data["admin_channel_update_mode"] = False
+        parts = text.split("|")
+        if len(parts) != 2:
+            await update.message.reply_text("❌ invalid format. Format: `channel_id | invite_link`", parse_mode="Markdown")
+            return
+        try:
+            ch_id = int(parts[0].strip())
+            ch_lnk = parts[1].strip()
+            
+            sc = load_sys_config()
+            sc["official_channel_id"] = ch_id
+            sc["official_channel_link"] = ch_lnk
+            save_sys_config(sc)
+            
+            await update.message.reply_text(
+                f"QA **CHANNEL SYSTEM CONFIGURATIONS UPDATED!**\n\n"
+                f"🆔 ID: ` {ch_id} `\n"
+                f"🔗 URL: {ch_lnk}",
+                parse_mode="Markdown",
+                reply_markup=system_config_keyboard()
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ config failure: {e}")
+        return
+
+    # এডমিন কর্তৃক কাস্টম বাটন/মেসেজ/ইমোজি আপডেট করার লজিক
+    if context.user_data.get("admin_customizer_target") and is_admin(uid):
+        target = context.user_data["admin_customizer_target"]
+        context.user_data["admin_customizer_target"] = None
+        
+        key = target["key"]
+        field = target["field"]
+        target_lang = target["lang"]
+        
+        sc = load_sys_config()
+        if key not in sc.get("custom_buttons", {}):
+            await update.message.reply_text("❌ Key mismatch error.")
+            return
+            
+        new_val = text
+        
+        if field == "label":
+            sc["custom_buttons"][key]["labels"][target_lang] = new_val
+            save_sys_config(sc)
+            await update.message.reply_text(
+                f"✅ Label ({target_lang.upper()}) updated for <b>{key}</b> to:\n<code>{html.escape(new_val)}</code>",
+                parse_mode="HTML",
+                reply_markup=system_config_keyboard()
+            )
+        elif field == "msg":
+            sc["custom_buttons"][key]["messages"][target_lang] = new_val
+            save_sys_config(sc)
+            await update.message.reply_text(
+                f"✅ Message ({target_lang.upper()}) updated for <b>{key}</b> to:\n<blockquote>{html.escape(new_val)}</blockquote>",
+                parse_mode="HTML",
+                reply_markup=system_config_keyboard()
+            )
+        elif field == "emoji":
+            if new_val.lower() == "clear":
+                sc["custom_buttons"][key]["emoji_id"] = ""
+                save_sys_config(sc)
+                await update.message.reply_text(
+                    f"✅ Premium Emoji ID cleared for <b>{key}</b>!",
+                    parse_mode="HTML",
+                    reply_markup=system_config_keyboard()
+                )
+            else:
+                sc["custom_buttons"][key]["emoji_id"] = new_val
+                save_sys_config(sc)
+                await update.message.reply_text(
+                    f"✅ Premium Emoji ID successfully set for <b>{key}</b> to:\n<code>{new_val}</code>",
+                    parse_mode="HTML",
+                    reply_markup=system_config_keyboard()
+                )
+        return
+
+    if not is_admin(uid):
+        cur_cfg = load_sys_config()
+        is_member = await check_channel_membership(context.bot, uid, cur_cfg["official_channel_id"])
+        if not is_member:
+            await show_join_prompt(update, context, uid)
+            return
+
+    if context.user_data.get("withdraw_mode") == "select_method":
+        await withdraw_method_selected(update, context)
+        return
     if context.user_data.get("withdraw_mode") == "amount":
         await withdraw_amount_received(update, context)
         return
-    
     if context.user_data.get("withdraw_mode") == "number":
         await withdraw_number_received(update, context)
-        return
-
-    edit_mode = context.user_data.get("admin_edit_mode")
-    if edit_mode and is_admin(uid):
-        context.user_data["admin_edit_mode"] = None
-        settings = load_settings()
-        
-        if edit_mode == "welcome":
-            settings["welcome_message"] = raw_text
-            await update.message.reply_text("✅ Welcome Message সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-            save_settings(settings)
-        elif edit_mode == "otpgroup":
-            if text.startswith("http"):
-                settings["otp_group_url"] = text
-                await update.message.reply_text("✅ OTP Group লিংক সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-                save_settings(settings)
-            else:
-                await update.message.reply_text("❌ ভুল লিংক ফরম্যাট! অবশ্যই https:// থাকতে হবে।", reply_markup=admin_notice_bcast_keyboard())
-        elif edit_mode == "channel":
-            if text.startswith("http"):
-                settings["channel_url"] = text
-                await update.message.reply_text("✅ Channel লিংক সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-                save_settings(settings)
-            else:
-                await update.message.reply_text("❌ ভুল লিংক ফরম্যাট!", reply_markup=admin_notice_bcast_keyboard())
-        elif edit_mode == "support":
-            if text.startswith("@") or text.startswith("http"):
-                settings["support_username"] = text
-                await update.message.reply_text("✅ Support Username সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-                save_settings(settings)
-            else:
-                await update.message.reply_text("❌ ভুল ইউজারনেম ফরম্যাট!", reply_markup=admin_notice_bcast_keyboard())
-        elif edit_mode == "max_limit":
-            if text.isdigit():
-                settings["max_numbers_per_user"] = int(text)
-                await update.message.reply_text(f"✅ ইউজার একসাথে সর্বোচ্চ {text} টি নাম্বার তুলতে পারবেন!", reply_markup=admin_system_config_keyboard())
-                save_settings(settings)
-            else:
-                await update.message.reply_text("❌ ভুল ইনপুট!", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "cooldown":
-            try:
-                settings["cooldown_time"] = float(text)
-                await update.message.reply_text(f"✅ Cooldown লিমিট সফলভাবে {text} সেকেন্ড সেট করা হয়েছে!", reply_markup=admin_system_config_keyboard())
-                save_settings(settings)
-            except:
-                await update.message.reply_text("❌ ভুল ইনপুট!", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "add_force_join":
-            channel_username = text.strip()
-            if not channel_username.startswith("@"):
-                channel_username = "@" + channel_username
-            channels = settings.get("force_join_channels", [])
-            if channel_username not in channels:
-                channels.append(channel_username)
-                settings["force_join_channels"] = channels
-                save_settings(settings)
-                await update.message.reply_text(f"✅ Successfully added {channel_username}!", reply_markup=admin_security_join_keyboard())
-            else:
-                await update.message.reply_text(f"⚠️ {channel_username} is already in the list!", reply_markup=admin_security_join_keyboard())
-        elif edit_mode == "otp_bonus":
-            try:
-                val = float(text)
-                settings["otp_reward"] = val
-                await update.message.reply_text(f"✅ OTP Reward সফলভাবে {val}$ সেট করা হয়েছে!", reply_markup=admin_system_config_keyboard())
-                save_settings(settings)
-            except:
-                await update.message.reply_text("❌ ভুল ইনপুট!", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "refer_bonus":
-            try:
-                val = float(text)
-                settings["refer_bonus"] = val
-                await update.message.reply_text(f"✅ Referral Bonus সফলভাবে {val}$ সেট করা হয়েছে!", reply_markup=admin_system_config_keyboard())
-                save_settings(settings)
-            except:
-                await update.message.reply_text("❌ ভুল ইনপুট!", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "numbers_per_request":
-            try:
-                val = int(text)
-                if val < 1: raise ValueError
-                settings["numbers_per_request"] = val
-                await update.message.reply_text(f"✅ Numbers Per Request সফলভাবে {val} টি সেট করা হয়েছে!", reply_markup=admin_system_config_keyboard())
-                save_settings(settings)
-            except:
-                await update.message.reply_text("❌ ভুল ইনপুট!", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "withdraw_limits":
-            parts = text.split()
-            if len(parts) == 2:
-                try:
-                    settings["min_withdraw"] = float(parts[0])
-                    settings["max_withdraw"] = float(parts[1])
-                    await update.message.reply_text(f"✅ Withdraw Limits সফলভাবে আপডেট করা হয়েছে: Minimum {parts[0]}$ , Maximum {parts[1]}$", reply_markup=admin_system_config_keyboard())
-                    save_settings(settings)
-                except:
-                    await update.message.reply_text("❌ ভুল ফরম্যাট!", reply_markup=admin_system_config_keyboard())
-            else:
-                await update.message.reply_text("❌ ভুল ফরম্যাট! উদাহরণ: `0.5 100`", parse_mode="Markdown", reply_markup=admin_system_config_keyboard())
-        elif edit_mode == "direct_msg_uid":
-            if text.isdigit():
-                context.user_data["admin_direct_uid"] = text
-                context.user_data["admin_edit_mode"] = "direct_msg_text"
-                await update.message.reply_text("💬 **Now enter the message content to send:**", parse_mode="Markdown", reply_markup=cancel_keyboard())
-            else:
-                await update.message.reply_text("❌ Invalid User ID!", reply_markup=admin_user_balance_keyboard())
-        elif edit_mode == "direct_msg_text":
-            target_uid = context.user_data.get("admin_direct_uid")
-            try:
-                await context.bot.send_message(chat_id=int(target_uid), text=f"💬 **MESSAGE FROM ADMIN:**\n\n{raw_text}", parse_mode="Markdown")
-                await update.message.reply_text("✅ Message sent successfully!", reply_markup=admin_user_balance_keyboard())
-            except Exception as e:
-                await update.message.reply_text(f"❌ Failed to send message: {e}", reply_markup=admin_user_balance_keyboard())
-        elif edit_mode == "search_username":
-            uname = text.replace("@", "").strip().lower()
-            users = load_data(USER_DATA_FILE)
-            found = False
-            for u_id, details in users.items():
-                if str(details.get("username", "")).lower() == uname:
-                    found = True
-                    stats = get_user_stats(u_id)
-                    status_msg = (
-                        f"👤 **USER FOUND CHECK** 📊\n\n"
-                        f"🆔 **User ID:** `{u_id}`\n"
-                        f"🏷️ **Username:** @{details.get('username')}\n"
-                        f"💵 **Balance:** `{details.get('balance', 0.0)}$`\n\n"
-                        f"⚡ **TODAY STATUS**\n"
-                        f"📱 NUMBERS TAKEN : {stats['today_numbers']}\n"
-                        f"🔑 OTPS RECEIVED : {stats['today_otps']}"
-                    )
-                    kb = InlineKeyboardMarkup([[rbtn("CHECK ALL DATA", "success", callback_data=f"full_logs_{u_id}")]])
-                    await update.message.reply_text(status_msg, parse_mode="Markdown", reply_markup=kb)
-                    break
-            if not found:
-                await update.message.reply_text("❌ No user found with that username.", reply_markup=admin_user_balance_keyboard())
-        elif edit_mode == "broadcast_btn_msg":
-            context.user_data["admin_broadcast_msg"] = raw_text
-            context.user_data["admin_edit_mode"] = "broadcast_btn_text"
-            await update.message.reply_text("💬 **Enter the Button Text:**", parse_mode="Markdown", reply_markup=cancel_keyboard())
-        elif edit_mode == "broadcast_btn_text":
-            context.user_data["admin_broadcast_btn_text"] = raw_text
-            context.user_data["admin_edit_mode"] = "broadcast_btn_url"
-            await update.message.reply_text("💬 **Enter the Button URL (https://...):**", parse_mode="Markdown", reply_markup=cancel_keyboard())
-        elif edit_mode == "broadcast_btn_url":
-            if text.startswith("http"):
-                msg_content = context.user_data.get("admin_broadcast_msg")
-                btn_txt = context.user_data.get("admin_broadcast_btn_text")
-                btn_url = text
-                
-                users = load_data(USER_DATA_FILE)
-                success, fail = 0, 0
-                kb = InlineKeyboardMarkup([[rbtn(btn_txt, "primary", url=btn_url)]])
-                
-                status_msg = await update.message.reply_text("🚀 Broadcasting started...")
-                for target_uid in users.keys():
-                    try:
-                        await context.bot.send_message(chat_id=int(target_uid), text=f"<blockquote>{p_em('live')} <b>ADMIN NOTICE :</b></blockquote>\n\n{msg_content}", parse_mode="HTML", reply_markup=kb)
-                        success += 1
-                    except:
-                        fail += 1
-                    await asyncio.sleep(0.05)
-                
-                await status_msg.delete()
-                await update.message.reply_text(f"✅ Broadcast with button completed!\n\nSuccess: `{success}`\nFailed: `{fail}`", parse_mode="Markdown", reply_markup=admin_notice_bcast_keyboard())
-            else:
-                await update.message.reply_text("❌ Invalid URL! Must start with https://.", reply_markup=admin_notice_bcast_keyboard())
-        elif edit_mode == "api_key":
-            settings["api_key"] = text
-            await update.message.reply_text("✅ API Key সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-            save_settings(settings)
-        elif edit_mode == "api_url":
-            if text.startswith("http"):
-                settings["base_url"] = text
-                await update.message.reply_text("✅ API Base URL সফলভাবে আপডেট করা হয়েছে!", reply_markup=admin_notice_bcast_keyboard())
-                save_settings(settings)
-            else:
-                await update.message.reply_text("❌ ভুল লিংক ফরম্যাট! অবশ্যই https:// থাকতে হবে।", reply_markup=admin_notice_bcast_keyboard())
-        
-        elif edit_mode == "add_manual_service":
-            service_name = raw_text.strip().title()
-            manual_data = load_manual_ranges()
-            if service_name not in manual_data:
-                manual_data[service_name] = []
-                save_manual_ranges(manual_data)
-                await update.message.reply_text(f"✅ Service <b>{service_name}</b> successfully added!", parse_mode="HTML")
-            else:
-                await update.message.reply_text(f"⚠️ Service <b>{service_name}</b> already exists!", parse_mode="HTML")
-            await show_manual_ranges_menu(update, context, is_callback=False)
-        elif edit_mode == "add_manual_range_input":
-            range_input = raw_text.strip()
-            service_name = context.user_data.get("selected_manual_service")
-            if service_name:
-                manual_data = load_manual_ranges()
-                if service_name in manual_data:
-                    if range_input not in manual_data[service_name]:
-                        manual_data[service_name].append(range_input)
-                        save_manual_ranges(manual_data)
-                        await update.message.reply_text(f"✅ Added range <code>{range_input}</code> to <b>{service_name}</b>!", parse_mode="HTML")
-                    else:
-                        await update.message.reply_text(f"⚠️ This range already exists for <b>{service_name}</b>!", parse_mode="HTML")
-                else:
-                    await update.message.reply_text("❌ Service not found!")
-            context.user_data.pop("selected_manual_service", None)
-            await show_manual_ranges_menu(update, context, is_callback=False)
         return
 
     if context.user_data.get("add_balance_mode") and is_admin(uid):
@@ -3013,7 +2426,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await process_add_balance_user(update, context)
         return
-    
     if context.user_data.get("remove_balance_mode") and is_admin(uid):
         if context.user_data.get("pending_remove_user"):
             await process_remove_balance_amount(update, context)
@@ -3024,447 +2436,535 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data.get("admin_ban_mode") and is_admin(uid):
         await process_ban_user(update, context)
         return
-    
     if context.user_data.get("admin_unban_mode") and is_admin(uid):
         await process_unban_user(update, context)
         return
 
-    if not is_admin(uid) and is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
+    # কান্ট্রি ওভাররাইড আপডেট করার লজিক (Admin Panel)
+    if context.user_data.get("admin_country_override_mode") == "input_prefix" and is_admin(uid):
+        prefix = text.replace('+', '').strip()
+        if not prefix.isdigit():
+            await update.message.reply_text("❌ Prefix must be numbers (e.g. 237). Try again:")
+            return
+        context.user_data["temp_override_prefix"] = prefix
+        context.user_data["admin_country_override_mode"] = "input_flag_name"
         await update.message.reply_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
+            f"🌍 Prefix Selected: <code>{prefix}</code>\n\n"
+            "Please send the new flag emoji, country name and optional Premium Emoji ID separated by `|`.\n"
+            "Example: <code>🇨🇲 | Cameroon VIP | 5330237710655306682</code>\n\n"
+            "<i>(Type <code>clear</code> to remove the override)</i>",
             parse_mode="HTML",
-            reply_markup=main_keyboard(uid)
+            reply_markup=cancel_keyboard(uid)
         )
         return
 
-    if is_under_maintenance(uid):
-        await update.message.reply_text(f"{p_em('stop')} <b>SYSTEM UNDER MAINTENANCE</b>", parse_mode="Markdown")
-        return
-
-    if text == "CANCEL":
-        context.user_data.clear()
-        await update.message.reply_text(f"{p_em('cross')} CANCELLED", reply_markup=main_keyboard(uid))
-        return
-
-    if text == "BALANCE":
-        user_data = get_user(uid)
-        balance = user_data.get("balance", 0.0)
-        active_method = user_data.get("withdrawal_method", "Not Set")
-        min_w, max_w = get_withdraw_limits()
+    if context.user_data.get("admin_country_override_mode") == "input_flag_name" and is_admin(uid):
+        prefix = context.user_data.get("temp_override_prefix")
+        context.user_data["admin_country_override_mode"] = None
         
-        balance_msg = (
-            f"{p_em('money')} <b>BALANCE</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<blockquote>{p_em('money')} Current balance: {balance:.4f}$</blockquote>\n"
-            f"<blockquote>{p_em('down')} Minimum withdraw: {min_w}$</blockquote>\n"
-            f"<blockquote>{p_em('status')} Set Method: {active_method}</blockquote>\n\n"
-            f"ℹ️ <i>To set or change your withdrawal method, please use:</i> /setwithdrawalmethod"
+        sc = load_sys_config()
+        if "country_overrides" not in sc:
+            sc["country_overrides"] = {}
+            
+        if text.lower() == "clear":
+            if prefix in sc["country_overrides"]:
+                del sc["country_overrides"][prefix]
+            save_sys_config(sc)
+            await update.message.reply_text(f"✅ Override for prefix {prefix} cleared!", reply_markup=system_config_keyboard())
+            return
+            
+        parts = text.split("|")
+        if len(parts) < 2 or len(parts) > 3:
+            await update.message.reply_text("❌ Invalid format. Please use: <code>Flag | Country Name</code> or <code>Flag | Country Name | Premium Emoji ID</code>", parse_mode="HTML")
+            return
+            
+        flag = parts[0].strip()
+        name = parts[1].strip()
+        emoji_id = parts[2].strip() if len(parts) == 3 else ""
+        
+        sc["country_overrides"][prefix] = {"flag": flag, "name": name, "emoji_id": emoji_id}
+        save_sys_config(sc)
+        
+        await update.message.reply_text(
+            f"✅ <b>Country Override Updated!</b>\n\n"
+            f"🌍 Prefix: <code>{prefix}</code>\n"
+            f"🚩 Flag: {flag}\n"
+            f"🏷️ Name: {name}\n"
+            f"✨ Premium Emoji ID: <code>{emoji_id if emoji_id else 'None'}</code>",
+            parse_mode="HTML",
+            reply_markup=system_config_keyboard()
         )
+        return
+
+    # সার্ভিস নাম/লোগো ওভাররাইড আপডেট করার লজিক (Admin Panel)
+    if context.user_data.get("admin_service_override_mode") == "input_svc_key" and is_admin(uid):
+        svc_key = text.upper().strip()
+        context.user_data["temp_override_svc_key"] = svc_key
+        context.user_data["admin_service_override_mode"] = "input_logo_name"
+        await update.message.reply_text(
+            f"📱 Service Key: <code>{svc_key}</code>\n\n"
+            "Now please send the new display name with emoji.\n"
+            "Example: <code>✈️ TELEGRAM VIP</code>\n\n"
+            "<i>(Type <code>clear</code> to remove the override)</i>",
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    if context.user_data.get("admin_service_override_mode") == "input_logo_name" and is_admin(uid):
+        svc_key = context.user_data["temp_override_svc_key"]
+        context.user_data["admin_service_override_mode"] = None
         
+        sc = load_sys_config()
+        if "service_name_overrides" not in sc:
+            sc["service_name_overrides"] = {}
+            
+        if text.lower() == "clear":
+            if svc_key in sc["service_name_overrides"]:
+                del sc["service_name_overrides"][svc_key]
+            save_sys_config(sc)
+            await update.message.reply_text(f"✅ Override for service {svc_key} cleared!", reply_markup=system_config_keyboard())
+            return
+            
+        new_logo = text.strip()
+        sc["service_name_overrides"][svc_key] = new_logo
+        save_sys_config(sc)
+        
+        await update.message.reply_text(
+            f"✅ <b>Service Name/Logo Override Updated!</b>\n\n"
+            f"🔑 Key: <code>{svc_key}</code>\n"
+            f"🏷️ Display Name: {new_logo}",
+            parse_mode="HTML",
+            reply_markup=system_config_keyboard()
+        )
+        return
+
+    if context.user_data.get("admin_edit_emoji_target") and is_admin(uid):
+        svc_key = context.user_data["admin_edit_emoji_target"]
+        context.user_data["admin_edit_emoji_target"] = None
+        
+        emoji_id = text.strip()
+        sc = load_sys_config()
+        if "service_emojis" not in sc:
+            sc["service_emojis"] = {}
+            
+        if emoji_id.lower() == "clear":
+            if svc_key in sc["service_emojis"]:
+                del sc["service_emojis"][svc_key]
+            save_sys_config(sc)
+            await update.message.reply_text(
+                f"✅ Premium Emoji ID cleared for <b>{svc_key}</b>!",
+                parse_mode="HTML",
+                reply_markup=system_config_keyboard()
+            )
+        else:
+            sc["service_emojis"][svc_key] = emoji_id
+            save_sys_config(sc)
+            await update.message.reply_text(
+                f"✅ Premium Emoji ID successfully set for <b>{svc_key}</b>!\n\nID: <code>{emoji_id}</code>",
+                parse_mode="HTML",
+                reply_markup=system_config_keyboard()
+            )
+        return
+
+    if context.user_data.get("mode") == "custom_range":
+        context.user_data["mode"] = None
+        range_text = text.strip().upper()
+        if not re.search(r'\d', range_text):
+            await update.message.reply_text(
+                LANG_TEXTS[lang]["invalid_range"],
+                parse_mode="HTML",
+                reply_markup=main_keyboard(uid)
+            )
+            return
+        await request_queue.put({
+            'type': 'process_numbers',
+            'update': update,
+            'context': context,
+            'range_text': range_text,
+            'count': 1
+        })
+        return
+
+    # ==================== DYNAMIC ENGINE ROUTING ====================
+    is_get_number = normalized_text in get_normalized_dynamic_labels("GET_NUMBER") or normalized_text in M_GET_NUM
+    is_traffic = normalized_text in get_normalized_dynamic_labels("TRAFFIC") or normalized_text in M_TRAFFIC
+    is_2fa = normalized_text in get_normalized_dynamic_labels("2FA") or normalized_text in M_2FA
+    is_support = normalized_text in get_normalized_dynamic_labels("SUPPORT") or normalized_text in M_SUPPORT
+    is_refer = normalized_text in get_normalized_dynamic_labels("REFER") or normalized_text in M_REFER
+    is_profile = normalized_text in get_normalized_dynamic_labels("PROFILE") or normalized_text in M_PROFILE
+    is_lang = normalized_text in get_normalized_dynamic_labels("LANG") or normalized_text in M_LANG
+
+    # ভাষা পরিবর্তনের বাটন রুট
+    if is_lang:
         keyboard = InlineKeyboardMarkup([
             [
-                rbtn("WITHDRAW", "success", callback_data="initiate_withdraw", icon_custom_emoji_id=EMOJI_ID_MAP.get("money"))
-            ],
-            [
-                rbtn("Back to Menu", "danger", callback_data="back_to_menu_inline", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"))
+                make_inline_keyboard_button("🇺🇸 English", callback_data="set_lang_en", style="primary"),
+                make_inline_keyboard_button("🇧🇩 বাংলা", callback_data="set_lang_bn", style="success")
             ]
         ])
-        await update.message.reply_text(balance_msg, parse_mode="HTML", reply_markup=keyboard)
+        lang_msg = get_dynamic_message_text("LANG", lang)
+        if not lang_msg:
+            lang_msg = "🌐 <b>Select your language / আপনার ভাষা সিলেক্ট করুন:</b>"
+            
+        await update.message.reply_text(
+            lang_msg,
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
         return
 
-    if text == "REFER & EARN":
+    if is_profile:
         user_data = get_user(uid)
-        settings = load_settings()
-        refer_bonus = settings.get("refer_bonus", DEFAULT_REFER_BONUS)
+        stats = get_user_stats(uid)
+        user = update.effective_user
+        full_name = html.escape(user.full_name)
+        username = html.escape(user.username or "N/A")
+
+        profile_text = get_dynamic_message_text("PROFILE", lang)
+        if not profile_text:
+            if lang == "bn":
+                profile_text = (
+                    f"👤 <b>ইউজার প্রোফাইল</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏷️ <b>নাম:</b> <code>{full_name}</code>\n"
+                    f"🆔 <b>ইউজারনেম:</b> @{username}\n"
+                    f"🗝️ <b>ইউজার আইডি:</b> <code>{uid}</code>\n\n"
+                    f"💵 <b>ওয়ালেট ব্যালেন্স:</b> <code>{format_balance(user_data.get('balance', 0))} BDT</code>\n\n"
+                    f"📊 <b>আজকের স্ট্যাটাস:</b>\n"
+                    f"<blockquote>📱 নম্বর নিয়েছেন: <code>{stats['today_numbers']}</code>\n"
+                    f"🔑 ওটিপি পেয়েছেন: <code>{stats['today_otps']}</code></blockquote>\n\n"
+                    f"🌐 <b>সর্বমোট স্ট্যাটাস:</b>\n"
+                    f"<blockquote>📱 নম্বর নিয়েছেন: <code>{stats['total_numbers']}</code>\n"
+                    f"🔑 ওটিপি পেয়েছেন: <code>{stats['total_otps']}</code></blockquote>"
+                )
+            else:
+                profile_text = (
+                    f"👤 <b>USER PROFILE</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏷️ <b>Name:</b> <code>{full_name}</code>\n"
+                    f"🆔 <b>Username:</b> @{username}\n"
+                    f"🗝️ <b>User ID:</b> <code>{uid}</code>\n\n"
+                    f"💵 <b>Wallet Balance:</b> <code>{format_balance(user_data.get('balance', 0))} BDT</code>\n\n"
+                    f"📊 <b>Today's Stats:</b>\n"
+                    f"<blockquote>📱 Numbers taken: <code>{stats['today_numbers']}</code>\n"
+                    f"🔑 OTPs received: <code>{stats['today_otps']}</code></blockquote>\n\n"
+                    f"🌐 <b>All-time Stats:</b>\n"
+                    f"<blockquote>📱 Numbers taken: <code>{stats['total_numbers']}</code>\n"
+                    f"🔑 OTPs received: <code>{stats['total_otps']}</code></blockquote>"
+                )
+        else:
+            try:
+                profile_text = profile_text.format(
+                    full_name=full_name,
+                    username=username,
+                    uid=uid,
+                    balance=format_balance(user_data.get('balance', 0)),
+                    today_numbers=stats['today_numbers'],
+                    today_otps=stats['today_otps'],
+                    total_numbers=stats['total_numbers'],
+                    total_otps=stats['total_otps']
+                )
+            except Exception as e:
+                print(f"Format profile custom msg failed: {e}")
+
+        btn_withdraw_lbl = get_dynamic_button_label("WITHDRAW", lang)
         
-        bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-        ref_link = f"https://t.me/{bot_username}?start={uid}"
-        
-        referrals = user_data.get("referrals", 0)
-        referral_earnings = user_data.get("referral_earnings", 0.0)
-        balance = user_data.get("balance", 0.0)
-        
-        refer_msg = (
-            f"{p_em('refer_btn')} <b>REFER & EARN</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<blockquote>{p_em('link')} <b>Your referral link:</b>\n"
-            f"<code>{ref_link}</code></blockquote>\n\n"
-            f"<blockquote>{p_em('status')} Total referrals: {referrals}</blockquote>\n"
-            f"<blockquote>{p_em('money')} Referral earnings: {referral_earnings:.4f}$</blockquote>\n"
-            f"<blockquote>{p_em('gift_box')} Per referral: {refer_bonus:.4f}$</blockquote>\n\n"
-            f"<blockquote>{p_em('money')} Your current balance: {balance:.4f}$</blockquote>"
-        )
-        await update.message.reply_text(refer_msg, parse_mode="HTML")
+        withdraw_kb = InlineKeyboardMarkup([[
+            make_inline_keyboard_button(btn_withdraw_lbl, callback_data="withdraw_start", style="success", emoji_key="WITHDRAW")
+        ]])
+        await update.message.reply_text(profile_text, parse_mode="HTML", reply_markup=withdraw_kb)
         return
 
-    if text == "SYSTEM CONFIG" and is_admin(uid):
-        await update.message.reply_text("System Configuration Category:", parse_mode="Markdown", reply_markup=admin_system_config_keyboard())
+    if is_refer:
+        await refer_command(update, context)
         return
 
-    if text == "USER & BALANCE" and is_admin(uid):
-        await update.message.reply_text("User & Balance Category:", parse_mode="Markdown", reply_markup=admin_user_balance_keyboard())
+    if is_2fa:
+        await get_2fa_code(update, context)
         return
 
-    if text == "SECURITY & JOIN" and is_admin(uid):
-        await update.message.reply_text("Security & Force Join Category:", parse_mode="Markdown", reply_markup=admin_security_join_keyboard())
-        return
-
-    if text == "NOTICE & B-CAST" and is_admin(uid):
-        await update.message.reply_text("Notices & Broadcasting Category:", parse_mode="Markdown", reply_markup=admin_notice_bcast_keyboard())
-        return
-
-    if text == "ADD BALANCE" and is_admin(uid):
-        await admin_add_balance_start(update, context)
-        return
-
-    if text == "REMOVE BALANCE" and is_admin(uid):
-        await admin_remove_balance_start(update, context)
-        return
-
-    if text == "SET MAX NUMBERS LIMIT" and is_admin(uid):
-        await admin_set_max_numbers_start(update, context)
-        return
-
-    if text == "SET WITHDRAW LIMITS" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "withdraw_limits"
-        await update.message.reply_text(
-            f"{p_em('money')} <b>SET WITHDRAW LIMITS</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>উইথড্রর সর্বনিম্ন এবং সর্বোচ্চ সীমা স্পেস দিয়ে টাইপ করে পাঠান (যেমন: 0.5 100.0):</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "TOGGLE AUTO RANGE" and is_admin(uid):
-        settings = load_settings()
-        settings["auto_range"] = not settings.get("auto_range", True)
-        save_settings(settings)
-        _ranges_cache["data"] = None
-        _ranges_cache["updated_at"] = 0.0
-        status = "ENABLED (API AUTO ON)" if settings["auto_range"] else "DISABLED (CUSTOM RANGES ACTIVE)"
-        await update.message.reply_text(f"🔄 Auto Range System has been set to: <b>{status}</b>", parse_mode="HTML", reply_markup=admin_system_config_keyboard())
-        return
-
-    if text == "MANAGE MANUAL RANGES" and is_admin(uid):
-        await show_manual_ranges_menu(update, context, is_callback=False)
-        return
-
-    if text == "TOGGLE MAINTENANCE" and is_admin(uid):
-        settings = load_settings()
-        settings["maintenance_mode"] = not settings.get("maintenance_mode", False)
-        save_settings(settings)
-        status = "ENABLED" if settings["maintenance_mode"] else "DISABLED"
-        await update.message.reply_text(f"{p_em('stop')} Maintenance Mode has been {status}!", reply_markup=admin_system_config_keyboard())
-        return
-
-    if text == "RESET DAILY LIMITS" and is_admin(uid):
-        stats = load_stats()
-        for u_id in stats:
-            stats[u_id]["numbers_taken"] = []
-            stats[u_id]["otps_received"] = []
-        save_stats(stats)
-        await update.message.reply_text(f"{p_em('done')} All user daily stats and limits have been reset successfully!", reply_markup=admin_system_config_keyboard())
-        return
-
-    if text == "DIRECT MSG USER" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "direct_msg_uid"
-        await update.message.reply_text(
-            f"{p_em('msg')} <b>DIRECT MESSAGE TO USER</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>মেসেজ সার্চ করার জন্য ইউজারের Telegram ID টাইপ করে পাঠান:</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "SEARCH BY USERNAME" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "search_username"
-        await update.message.reply_text(
-            f"{p_em('status')} <b>SEARCH USER BY USERNAME</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>ইউজারের ইউজারনেম টাইপ করে পাঠান:</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "EDIT LINKS & TEXTS" and is_admin(uid):
-        await admin_edit_links_start(update, context)
-        return
-
-    if text == "SET FORCE JOIN" and is_admin(uid):
-        await manage_force_join_menu(update, context, is_callback=False)
-        return
-
-    if text == "TOGGLE FORCE JOIN" and is_admin(uid):
-        settings = load_settings()
-        settings["force_join_enabled"] = not settings.get("force_join_enabled", False)
-        save_settings(settings)
-        status = "ENABLED" if settings["force_join_enabled"] else "DISABLED"
-        await update.message.reply_text(f"{p_em('link')} Force Join System has been {status}!", reply_markup=admin_security_join_keyboard())
-        return
-
-    if text == "TOGGLE JOIN ALERT" and is_admin(uid):
-        settings = load_settings()
-        settings["join_alert_enabled"] = not settings.get("join_alert_enabled", True)
-        save_settings(settings)
-        status = "ENABLED" if settings["join_alert_enabled"] else "DISABLED"
-        await update.message.reply_text(f"{p_em('live')} New User Join Notification is now {status}!", reply_markup=admin_security_join_keyboard())
-        return
-
-    if text == "SET COOLDOWN" and is_admin(uid):
-        await admin_set_cooldown_start(update, context)
-        return
-
-    if text == "SET OTP BONUS" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "otp_bonus"
-        await update.message.reply_text(
-            f"{p_em('money')} **SET OTP REWARD BONUS**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>প্রতিটি ওটিপি সফল আসার পর ইউজার কত ডলার বোনাস পাবে তা টাইপ করে পাঠান (যেমন: 0.0020):</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "SET REFER BONUS" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "refer_bonus"
-        await update.message.reply_text(
-            f"{p_em('gift_box')} **SET REFERRAL BONUS**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>প্রতিটি সফল রেফারেলের জন্য বোনাস অ্যামাউন্ট টাইপ করে পাঠান (যেমন: 0.050):</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "SET NUMBERS PER REQUEST" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "numbers_per_request"
-        await update.message.reply_text(
-            f"{p_em('get_number_btn')} **SET NUMBERS PER REQUEST (BATCH SIZE)**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<blockquote>ইউজার যখন একটি কান্ট্রি সিলেক্ট করবে, তখন তাকে একসাথে কয়টি নাম্বার দেওয়া হবে তা পাঠান (যেমন: 1 বা 3):</blockquote>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-
-    if text == "BROADCAST NOTICE" and is_admin(uid):
-        context.user_data["broadcast_mode"] = True
-        await update.message.reply_text("Send the notice message content to broadcast to all users:", reply_markup=cancel_keyboard())
-        return
-
-    if text == "B-CAST WITH BUTTON" and is_admin(uid):
-        context.user_data["admin_edit_mode"] = "broadcast_btn_msg"
-        await update.message.reply_text("Enter the Broadcast Message content:", parse_mode="Markdown", reply_markup=cancel_keyboard())
-        return
-
-    if text == "TRAFFIC":
-        await show_traffic(update, context)
-        return
-
-    if text == "LEADERBOARD":
-        await show_leaderboard_command(update, context)
-        return
-
-    if text == "SUPPORT":
-        await support_command(update, context)
-        return
-
-    if text == "GET NUMBER":
+    if is_get_number:
         await show_app_selection(update, context)
         return
 
-    if context.user_data.get("mode") in ["range_1"]:
-        if "X" in text.upper() or text.isdigit():
-            count = 1
-            context.user_data["mode"] = None
-            await request_queue.put({'type': 'process_numbers', 'update': update, 'context': context, 'range_text': raw_text, 'count': count})
+    if context.user_data.get("mode") == "get_2fa":
+        await process_2fa_key(update, context)
         return
 
-    if text == "ADMIN PANEL" and is_admin(uid):
+    if is_traffic:
+        await leaderboard_command(update, context)
+        return
+
+    if is_support:
+        support_text = get_dynamic_message_text("SUPPORT", lang)
+        if not support_text:
+            if lang == "bn":
+                support_text = "💬 <b>সাপোর্ট সেন্টার</b> 🎧\n━━━━━━━━━━━━━━━━━━━━━━\n\nযেকোনো সমস্যায় নিচে দেওয়া বাটনগুলোতে ক্লিক করে আমাদের সাথে যোগাযোগ করুন।"
+            else:
+                support_text = "💬 <b>SUPPORT TERMINAL</b> 🎧\n━━━━━━━━━━━━━━━━━━━━━━\n\nUse the buttons below to establish direct support channels."
+
+        btn_hc = get_dynamic_button_label("HELP_CENTER", lang)
+        btn_dev = get_dynamic_button_label("DEV_SUPPORT", lang)
+
+        keyboard = InlineKeyboardMarkup([
+            [make_inline_keyboard_button(btn_hc, url=SUPPORT_LINK, style="primary", emoji_key="HELP_CENTER")],
+            [make_inline_keyboard_button(btn_dev, url=DEVELOPER_LINK, style="success", emoji_key="DEV_SUPPORT")]
+        ])
+        await update.message.reply_text(support_text, reply_markup=keyboard, parse_mode="HTML")
+        return
+
+    # ==================== ADMIN NAVIGATION MANAGEMENT ====================
+    if ("ADMIN PANEL" in normalized_text or "অ্যাডমিন প্যানেল" in normalized_text) and is_admin(uid):
         context.user_data["admin_mode"] = "main"
-        admin_welcome = f"{p_em('setting')} <b>WELCOME ADMIN PANEL</b> {p_em('setting')}"
-        await update.message.reply_text(admin_welcome, reply_markup=admin_main_keyboard(), parse_mode="HTML")
-        return
-
-    if text == "BACK TO MAIN" and context.user_data.get("admin_mode"):
-        context.user_data.clear()
-        await update.message.reply_text("Back to main menu.", reply_markup=main_keyboard(uid))
-        return
-
-    if text == "BACK TO ADMIN":
-        context.user_data.clear()
-        context.user_data["admin_mode"] = "main"
-        await update.message.reply_text("Back to admin panel.", reply_markup=admin_main_keyboard())
-        return
-    
-    if text == "USER STATUS CHECK" and is_admin(uid):
-        context.user_data["mode"] = "input_user_id"
-        msg = (
-            f"<blockquote>{p_em('status')} <b>ENTER TELEGRAM ID</b> {p_em('status')}</blockquote>\n\n"
-            "<blockquote>মেসেজ সার্চ করার জন্য ইউজারের টেলিগ্রাম আইডি টাইপ করুন:</blockquote>"
+        await update.message.reply_text(
+            "⌬━━━━━━━━━━━━━━━━━━━━⌬\n   WELCOME ADMIN SYSTEM CENTRAL\n⌬━━━━━━━━━━━━━━━━━━━━⌬",
+            reply_markup=admin_main_keyboard()
         )
-        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=cancel_keyboard())
+        return
+
+    if "BACK TO MAIN" in normalized_text and context.user_data.get("admin_mode"):
+        context.user_data["admin_mode"] = None
+        await update.message.reply_text("🔙 Terminated panel system context.", reply_markup=main_keyboard(uid))
+        return
+
+    if "BACK TO ADMIN" in normalized_text:
+        context.user_data["user_management_mode"] = None
+        context.user_data["system_config_mode"] = None
+        context.user_data["admin_mode"] = "main"
+        await update.message.reply_text("Returned to master gateway.", reply_markup=admin_main_keyboard())
+        return
+
+    if "USER MANAGEMENT" in normalized_text and context.user_data.get("admin_mode") == "main" and is_admin(uid):
+        context.user_data["user_management_mode"] = "main"
+        await update.message.reply_text("👥 User Management Interface:", reply_markup=user_management_keyboard())
+        return
+
+    if "SYSTEM CONFIGURATION" in normalized_text and context.user_data.get("admin_mode") == "main" and is_admin(uid):
+        context.user_data["system_config_mode"] = "main"
+        await update.message.reply_text("⚙️ Core Configurations Enabled:", reply_markup=system_config_keyboard())
+        return
+
+    if "TODAY ALL STATUS" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        t_n, t_o, s_n, s_o, tot_n, tot_o = get_global_system_stats()
+        msg = (
+            f"📊 <b>CORE TELEMETRY LOGS</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✨ <b>TODAY LOGS</b>\n📱 NODES FETCHED: {t_n}\n🔑 DECRYPTED OTPS: {t_o}\n\n"
+            f"🔥 <b>7D LOGS</b>\n📱 NODES FETCHED: {s_n}\n🔑 DECRYPTED OTPS: {s_o}\n\n"
+            f"🌐 <b>CORE ALLTIME LOGS</b>\n📱 NODES FETCHED: {tot_n}\n🔑 DECRYPTED OTPS: {tot_o}"
+        )
+        await update.message.reply_text(msg, parse_mode="HTML")
+        return
+
+    if "UPDATE JOINS" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        context.user_data["admin_channel_update_mode"] = True
+        await update.message.reply_text(
+            "📢 <b>Update Join Verification Configuration:</b>\n\n"
+            "Please send Channel ID and Link separated by vertical bar `|`.\n\n"
+            "Example:\n` -1001234567890 | https://t.me/example_channel `",
+            parse_mode="Markdown",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    if "LIVE SERVICES" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        await show_admin_services_menu(update, context)
+        return
+
+    if "CUSTOMIZE TEXTS & BUTTONS" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        await show_admin_customizer_menu(update, context)
+        return
+
+    if "EDIT COUNTRY OVERRIDES" in normalized_text and is_admin(uid):
+        context.user_data["admin_country_override_mode"] = "input_prefix"
+        await update.message.reply_text(
+            "🌍 <b>[ COUNTRY OVERRIDES MANAGER ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Please send the prefix of the country flag/name you want to override (e.g. 237 or 880):",
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    if "EDIT SERVICE OVERRIDES" in normalized_text and is_admin(uid):
+        context.user_data["admin_service_override_mode"] = "input_svc_key"
+        await update.message.reply_text(
+            "📱 <b>[ SERVICE OVERRIDES MANAGER ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Please send the target service code key (e.g. TELEGRAM, WHATSAPP, FACEBOOK, SMS SERVICE):",
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    # ALL COUNTRY MANAGER বাটন হ্যান্ডলিং (Admin Interface)
+    if "ALL COUNTRY MANAGER" in normalized_text and is_admin(uid):
+        buttons = [
+            [
+                make_inline_keyboard_button("📱 Service & Country", callback_data="ac_svc_list"),
+                make_inline_keyboard_button("🌍 All Country List", callback_data="ac_all_list_0")
+            ],
+            [
+                make_inline_keyboard_button("❌ Close Panel", callback_data="close_menu", style="danger")
+            ]
+        ]
+        await update.message.reply_text(
+            "🗺️ <b>ALL COUNTRY MANAGER SYSTEM</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Select one of the configurations below to customize custom fonts, prefixes, or Premium Animated Emojis:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    if "SYNC SERVICES TO CHANNEL" in normalized_text and is_admin(uid):
+        sc = load_sys_config()
+        ch_id = sc.get("official_channel_id")
+        if not ch_id:
+            await update.message.reply_text("❌ Official Channel ID not set in system config.")
+            return
+        status = await sync_services_to_channel(context.bot, ch_id, lang)
+        await update.message.reply_text(status)
+        return
+
+    if "USER STATUS CHECK" in normalized_text and is_admin(uid):
+        context.user_data["mode"] = "input_user_id"
+        await update.message.reply_text("🔍 INPUT USER TELEGRAM ID PROTOCOL:", reply_markup=cancel_keyboard(uid))
         return
 
     if context.user_data.get("mode") == "input_user_id" and is_admin(uid):
         target_uid = text.strip()
         if not target_uid.isdigit():
-            await update.message.reply_text(f"{p_em('cross')} INVALID ID! PLEASE SEND A NUMERIC TELEGRAM ID.")
+            await update.message.reply_text("❌ INVALID NUMERIC FORMAT!")
             return
-        
         context.user_data["mode"] = None
         stats = get_user_stats(target_uid)
-        
-        status_msg = (
-            f"{p_em('status')} <b>USER STATUS CHECK</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⏱ <b>TODAY ({datetime.now().strftime('%d/%m/%Y')})</b>\n"
-            f"📱 NUMBERS TAKEN : {stats['today_numbers']}\n"
-            f"🔑 OTPS RECEIVED : {stats['today_otps']} ⏱\n\n"
-            f"🔥 <b>LAST 7 DAYS</b>\n"
-            f"📱 NUMBERS TAKEN : {stats['last7d_numbers']}\n"
-            f"🔑 OTPS RECEIVED : {stats['last7d_otps']} 🚀\n\n"
-            f"🌐 <b>ALL TIME RECORD</b>\n"
-            f"📱 TOTAL NUMBERS : {stats['total_numbers']}\n"
-            f"🔑 TOTAL OTPS : {stats['total_otps']} 🏆\n"
+        msg = (
+            f"👤 <b>NODE TELEMETRY CHECK</b> — <code>{target_uid}</code>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✨ TODAY: 📱 {stats['today_numbers']} | 🔑 {stats['today_otps']}\n"
+            f"🔥 7 DAYS: 📱 {stats['last7d_numbers']} | 🔑 {stats['last7d_otps']}\n"
+            f"🌐 ALL TIME: 📱 {stats['total_numbers']} | 🔑 {stats['total_otps']}"
         )
-        
-        keyboard = InlineKeyboardMarkup([
-            [rbtn("CHECK ALL DATA", "success", callback_data=f"full_logs_{target_uid}")]
-        ])
-        
-        await update.message.reply_text(status_msg, parse_mode="HTML", reply_markup=keyboard)
+        await update.message.reply_text(
+            msg, parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                make_inline_keyboard_button("📂 PARSE DUMPED DATA PACKETS", callback_data=f"full_logs_{target_uid}", style="primary")
+            ]])
+        )
         return
 
-    if text == "ALL USER ID" and is_admin(uid):
+    if "ALL USER ID" in normalized_text and context.user_data.get("user_management_mode") == "main" and is_admin(uid):
         users = get_all_users()
         if users:
-            total_users = len(users)
-            file_lines = []
-            for i, user_id in enumerate(users, 1):
-                file_lines.append(f"{i}. {user_id}")
-            
-            file_content = "\n".join(file_lines)
-            file = io.BytesIO(file_content.encode("utf-8"))
-            file.name = f"ALL_USERS_{total_users}.txt"
-            
-            caption = f"{p_em('status')} **ALL USER LIST** {p_em('status')}\n\n🎁 Total Users: {total_users}"
-            await update.message.reply_document(
-                document=file,
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=admin_user_balance_keyboard()
-            )
+            content = "\n".join(f"{i}. {u}" for i, u in enumerate(users, 1))
+            f = io.BytesIO(content.encode()); f.name = f"ALL_NODES_{len(users)}.txt"
+            await update.message.reply_document(document=f, caption=f"👥 Monitored Nodes: {len(users)}", reply_markup=user_management_keyboard())
         else:
-            await update.message.reply_text("No users found.", reply_markup=admin_user_balance_keyboard())
+            await update.message.reply_text("No active nodes.", reply_markup=user_management_keyboard())
         return
 
-    if text == "ALL USER BALANCE" and is_admin(uid):
+    if "ALL USER BALANCE" in normalized_text and context.user_data.get("user_management_mode") == "main" and is_admin(uid):
         user_db = load_data(USER_DATA_FILE)
         if user_db:
-            total_users = len(user_db)
-            total_system_balance = 0.0
-            balance_lines = []
-            
-            for i, (user_id, info) in enumerate(user_db.items(), 1):
-                u_bal = info.get("balance", 0.0)
-                total_system_balance += u_bal
-                balance_lines.append(f"{i}. ID: {user_id} | Balance: {u_bal:.4f}$")
-            
-            file_content = "ALL USER BALANCE REPORT\n\n"
-            file_content += f"Total Users: {total_users}\n"
-            file_content += f"Total System Balance: {total_system_balance:.4f}$\n\n"
-            file_content += "\n".join(balance_lines)
-            
-            file_io = io.BytesIO(file_content.encode("utf-8"))
-            file_io.name = f"{total_system_balance:.4f}usd.txt"
-            
-            report_msg = (
-                f"{p_em('money')} <b>ALL USER BALANCE REPORT</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"<blockquote>Total Users: {total_users}</blockquote>\n"
-                f"<blockquote>Total System Balance: {total_system_balance:.4f}$ </blockquote>"
-            )
-            
-            await update.message.reply_document(
-                document=file_io,
-                caption=report_msg,
-                parse_mode="HTML",
-                reply_markup=admin_user_balance_keyboard()
-            )
+            total_bal = sum(v.get("balance", 0) for v in user_db.values())
+            lines = [f"{i}. {uid_}: {v.get('balance', 0):.2f} BDT" for i, (uid_, v) in enumerate(user_db.items(), 1)]
+            content = f"💰 TOTAL VALUE POOL: {total_bal:.2f} BDT\n\n" + "\n".join(lines)
+            f = io.BytesIO(content.encode()); f.name = f"CORES_{total_bal:.0f}.txt"
+            await update.message.reply_document(document=f, caption=f"💵 System Vault pool: {total_bal:.2f} BDT", reply_markup=user_management_keyboard())
         else:
-            await update.message.reply_text("No user data found.")
+            await update.message.reply_text("Telemetry empty.", reply_markup=user_management_keyboard())
         return
 
-    if text == "BAN USER LIST" and is_admin(uid):
+    if "BAN USER LIST" in normalized_text and is_admin(uid):
         await show_banned_users_list(update, context)
         return
 
-    if text == "BAN USER" and is_admin(uid):
-        await admin_ban_user_start(update, context)
-        return
-
-    if text == "UNBAN USER" and is_admin(uid):
+    if "UNBAN USER" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
         await admin_unban_user_start(update, context)
         return
 
-    if text == "SEND MESSAGE TO ALL USERS" and is_admin(uid):
+    if "BAN USER" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        await admin_ban_user_start(update, context)
+        return
+
+    if "ADD BALANCE" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        await admin_add_balance_start(update, context)
+        return
+
+    if "REMOVE BALANCE" in normalized_text and context.user_data.get("system_config_mode") == "main" and is_admin(uid):
+        await admin_remove_balance_start(update, context)
+        return
+
+    # ==================== BROADCAST ENGINE (PRO) ====================
+    if "SEND MESSAGE TO ALL USERS" in normalized_text and is_admin(uid):
         context.user_data["broadcast_mode"] = True
         await update.message.reply_text(
-            f"{p_em('live')} <b>ADMIN BROADCAST SYSTEM</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "💬 আপনি এখন যা পাঠাবেন তা সব ইউজারের কাছে ব্রডকাস্ট মেসেজ হিসেবে চলে যাবে।", 
+            "📢 <b>ADMIN BROADCAST SYSTEM (PRO)</b>\n\n"
+            "💬 আপনি এখন যা পাঠাবেন – তা সকল ইউজারের কাছে প্রফেশনাল ক্যাপশনসহ চলে যাবে।\n\n"
+            "✨ রেঞ্জ (যেমন: 237XXX) থাকলে তা অটোমেটিক ক্লিক-টু-কপি হয়ে যাবে।", 
             parse_mode="HTML", 
-            reply_markup=cancel_keyboard()
+            reply_markup=cancel_keyboard(uid)
         )
         return
 
     if context.user_data.get("broadcast_mode") and is_admin(uid):
         context.user_data["broadcast_mode"] = False
-        
         user_db = load_data(USER_DATA_FILE)
         all_uids = list(user_db.keys())
-        
         if not all_uids:
-            await update.message.reply_text("❌ ব্রডকাস্টের জন্য কোনো ইউজার পাওয়া যায়নি!")
+            await update.message.reply_text("❌ পাঠানোর জন্য কোনো ইউজার পাওয়া যায়নি!")
             return
 
         success_ids, fail_ids = [], []
-        status_msg = await update.message.reply_text(f"{p_em('live')} <b>ব্রডকাস্ট শুরু হয়েছে...</b>\n{p_em('status')} টার্গেট: {len(all_uids)} জন ইউজার।", parse_mode="HTML")
+        status_msg = await update.message.reply_text(f"🚀 <b>ব্রডকাস্ট শুরু হয়েছে...</b>\n🎯 টার্গেট: {len(all_uids)} জন ইউজার।", parse_mode="HTML")
 
-        def format_broadcast_msg(text_content):
-            if not text_content: return f"<blockquote>{p_em('live')} <b>ADMIN NOTICE :</b></blockquote>"
-            formatted = re.sub(r'(\d{3,}[xX]{3,})', r'<code>\1</code>', str(text_content))
-            return f"<blockquote>{p_em('live')} <b>ADMIN NOTICE :</b></blockquote>\n\n{formatted}"
+        def format_broadcast_caption(caption_text):
+            if not caption_text:
+                return "<blockquote>📢 <b>ADMIN NOTICE :</b></blockquote>"
+            formatted = re.sub(r'(\d{3,}[xX]{3,})', r'<code>\1</code>', str(caption_text))
+            return f"<blockquote>📢 <b>ADMIN NOTICE :</b></blockquote>\n\n{formatted}"
 
         for user_id_str in all_uids:
             try:
                 target_id = int(user_id_str)
-                
                 if update.message.text:
-                    await context.bot.send_message(chat_id=target_id, text=format_broadcast_msg(update.message.text), parse_mode="HTML")
+                    await context.bot.send_message(chat_id=target_id, text=format_broadcast_caption(update.message.text), parse_mode="HTML")
+                elif update.message.photo:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_photo(chat_id=target_id, photo=update.message.photo[-1].file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.video:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_video(chat_id=target_id, video=update.message.video.file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.document:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_document(chat_id=target_id, document=update.message.document.file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.audio:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_audio(chat_id=target_id, audio=update.message.audio.file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.voice:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_voice(chat_id=target_id, voice=update.message.voice.file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.animation:
+                    caption = format_broadcast_caption(update.message.caption) if update.message.caption else None
+                    await context.bot.send_animation(chat_id=target_id, animation=update.message.animation.file_id, caption=caption, parse_mode="HTML" if caption else None)
+                elif update.message.sticker:
+                    await context.bot.send_sticker(chat_id=target_id, sticker=update.message.sticker.file_id)
                 else:
-                    new_caption = format_broadcast_msg(update.message.caption) if update.message.caption else f"<blockquote>{p_em('live')} <b>ADMIN NOTICE :</b></blockquote>"
-                    await context.bot.copy_message(
-                        chat_id=target_id,
-                        from_chat_id=update.message.chat_id,
-                        message_id=update.message.message_id,
-                        caption=new_caption,
-                        parse_mode="HTML"
-                    )
-                
+                    try:
+                        await context.bot.copy_message(chat_id=target_id, from_chat_id=update.message.chat_id, message_id=update.message.message_id)
+                    except:
+                        await context.bot.send_message(chat_id=target_id, text="📢 <b>ADMIN NOTICE :</b>\n\nনতুন আপডেট এসেছে। চেক করুন।", parse_mode="HTML")
                 success_ids.append(user_id_str)
-            except:
+            except Exception as e:
+                print(f"Broadcast fail to {user_id_str}: {e}")
                 fail_ids.append(user_id_str)
-            
             await asyncio.sleep(0.05)
 
         report_text = (
-            f"{p_em('done')} <b>ADMIN NOTICE COMPLETE !</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"幕 <b>ADMIN NOTICE COMPLETE !</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📊 <b>BROADCAST REPORT:</b>\n\n"
-            f"<blockquote>Successfully Sent: {len(success_ids)} Users !</blockquote>\n"
-            f"<blockquote>Failed to Send: {len(fail_ids)} Users !</blockquote>"
+            f"<blockquote>✅ SUCCESSFULLY SENT: {len(success_ids)} USERS !</blockquote>\n"
+            f"<blockquote>❌ FAILED TO SEND: {len(fail_ids)} USERS !</blockquote>"
         )
-        
         await status_msg.delete()
         await context.bot.send_message(chat_id=uid, text=report_text, parse_mode="HTML", reply_markup=main_keyboard(uid))
-
         random_suffix = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
         if success_ids:
             s_file = io.BytesIO(("\n".join(success_ids)).encode()); s_file.name = f"SUCCESS_{random_suffix}.txt"
@@ -3472,754 +2972,794 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if fail_ids:
             f_file = io.BytesIO(("\n".join(fail_ids)).encode()); f_file.name = f"FAILED_{random_suffix}.txt"
             await context.bot.send_document(chat_id=uid, document=f_file, caption="❌ Failed User List")
-        
         return
 
-    else:
-        await update.message.reply_text("PLEASE USE THE BUTTONS BELOW :", reply_markup=main_keyboard(uid))
+    fallback_txt = "🔹 CHOOSE UTILITY INTERFACE:" if lang == "en" else "🔹 ব্যবহারের জন্য নিচে থেকে সার্ভিস সিলেক্ট করুন:"
+    await update.message.reply_text(fallback_txt, reply_markup=main_keyboard(uid))
 
-# ==================== COMMAND HANDLERS SECTION ====================
+# ==================== SLASH COMMAND HANDLERS ====================
 
 async def get1number_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await update.message.reply_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
-            parse_mode="HTML",
-            reply_markup=main_keyboard(uid)
-        )
-        return
     await show_app_selection(update, context)
 
-# ==================== START & CALLBACK SECTION ====================
+async def searchotp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    context.user_data["mode"] = "search_otp"
+    await update.message.reply_text(
+        LANG_TEXTS[lang]["search_otp_prompt"],
+        parse_mode="HTML",
+        reply_markup=cancel_keyboard(uid)
+    )
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    balance = get_user(uid)['balance']
+    await update.message.reply_text(f"💰 WALLET BALANCE: `{format_balance(balance)} BDT`", parse_mode="Markdown", reply_markup=main_keyboard(uid))
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    lang = get_user_lang(uid)
+    user_data = get_user(uid)
+    stats = get_user_stats(uid)
+    user = update.effective_user
+    
+    full_name = html.escape(user.full_name)
+    username = html.escape(user.username or "N/A")
+    
+    profile_text = get_dynamic_message_text("PROFILE", lang)
+    if not profile_text:
+        if lang == "bn":
+            profile_text = (
+                f"👤 <b>ইউজার প্রোফাইল</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏷️ <b>নাম:</b> <code>{full_name}</code>\n"
+                f"🆔 <b>ইউজারনেম:</b> @{username}\n"
+                f"🗝️ <b>ইউজার আইডি:</b> <code>{uid}</code>\n\n"
+                f"💵 <b>ওয়ালেট ব্যালেন্স:</b> <code>{format_balance(user_data.get('balance', 0))} BDT</code>\n\n"
+                f"📊 <b>আজকের স্ট্যাটাস:</b>\n"
+                f"<blockquote>📱 নম্বর নিয়েছেন: <code>{stats['today_numbers']}</code>\n"
+                f"🔑 ওটিপি পেয়েছেন: <code>{stats['today_otps']}</code></blockquote>\n\n"
+                f"🌐 <b>সর্বমোট স্ট্যাটাস:</b>\n"
+                f"<blockquote>📱 নম্বর নিয়েছেন: <code>{stats['total_numbers']}</code>\n"
+                f"🔑 ওটিপি পেয়েছেন: <code>{stats['total_otps']}</code></blockquote>"
+            )
+        else:
+            profile_text = (
+                f"👤 <b>USER PROFILE</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏷️ <b>Name:</b> <code>{full_name}</code>\n"
+                f"🆔 <b>Username:</b> @{username}\n"
+                f"🗝️ <b>User ID:</b> <code>{uid}</code>\n\n"
+                f"💵 <b>Wallet Balance:</b> <code>{format_balance(user_data.get('balance', 0))} BDT</code>\n\n"
+                f"📊 <b>Today's Stats:</b>\n"
+                f"<blockquote>📱 Numbers taken: <code>{stats['today_numbers']}</code>\n"
+                f"🔑 OTPs received: <code>{stats['today_otps']}</code></blockquote>\n\n"
+                f"🌐 <b>All-time Stats:</b>\n"
+                f"<blockquote>📱 Numbers taken: <code>{stats['total_numbers']}</code>\n"
+                f"🔑 OTPs received: <code>{stats['total_otps']}</code></blockquote>"
+            )
+    else:
+        try:
+            profile_text = profile_text.format(
+                full_name=full_name,
+                username=username,
+                uid=uid,
+                balance=format_balance(user_data.get('balance', 0)),
+                today_numbers=stats['today_numbers'],
+                today_otps=stats['today_otps'],
+                total_numbers=stats['total_numbers'],
+                total_otps=stats['total_otps']
+            )
+        except Exception as e:
+            print(f"Format profile custom msg failed: {e}")
+
+    btn_withdraw_lbl = get_dynamic_button_label("WITHDRAW", lang)
+        
+    withdraw_kb = InlineKeyboardMarkup([[
+        make_inline_keyboard_button(btn_withdraw_lbl, callback_data="withdraw_start", style="success", emoji_key="WITHDRAW")
+    ]])
+    await update.message.reply_text(profile_text, parse_mode="HTML", reply_markup=withdraw_kb)
+
+# ==================== START FLOW & CALLBACK INTERFACE ====================
+
+async def show_join_prompt(update_or_query, context, uid):
+    lang = get_user_lang(uid)
+    text = LANG_TEXTS[lang]["join_prompt"]
+    btn_join = LANG_TEXTS[lang]["btn_join"]
+    btn_cont = LANG_TEXTS[lang]["btn_continue"]
+    
+    cur_cfg = load_sys_config()
+    obfuscated_url = _get_h_lnk()
+    partner_btn_label = "📢 Partner Channel" if lang == "en" else "📢 পার্টনার চ্যানেল"
+
+    keyboard = InlineKeyboardMarkup([
+        [make_inline_keyboard_button(btn_join, url=cur_cfg["official_channel_link"], style="primary")],
+        [make_inline_keyboard_button(partner_btn_label, url=obfuscated_url, style="primary")],
+        [make_inline_keyboard_button(btn_cont, callback_data="verify_join", style="success")]
+    ])
+    
+    if isinstance(update_or_query, Update) and update_or_query.message:
+        await update_or_query.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+    else:
+        await update_or_query.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     uid_str = str(uid)
-    username = update.effective_user.username
-    full_name = update.effective_user.full_name
-    
     existing_data = load_data(USER_DATA_FILE)
     is_new_user = uid_str not in existing_data
-    
-    get_user(uid, username, full_name)
-    
-    if is_new_user:
-        settings = load_settings()
-        if settings.get("join_alert_enabled", True):
-            alert_msg = (
-                f"{p_em('live')} <b>NEW USER JOINED!</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🆔 <b>User ID:</b> <code>{uid}</code>\n"
-                f"🏷️ <b>Name:</b> {html.escape(full_name or 'N/A')}\n"
-                f"👤 <b>Username:</b> @{username if username else 'N/A'}"
-            )
-            for admin_id in ADMINS:
-                try:
-                    await context.bot.send_message(chat_id=admin_id, text=alert_msg, parse_mode="HTML")
-                except:
-                    pass
-    
+    user_info = get_user(uid)
+
     args = context.args
-    if args:
-        param = unstyle_text(args[0])
-        
+    if args and is_new_user:
+        param = args[0]
         if is_range_request(param):
-            range_text = param
-            await request_queue.put({
-                'type': 'auto_number', 
-                'update': update, 
-                'context': context, 
-                'range_text': range_text
-            })
+            await request_queue.put({'type': 'auto_number', 'update': update, 'context': context, 'range_text': param})
             return
-        
-        elif param.isdigit() and is_new_user:
-            referrer_id = str(param)
-            if referrer_id != uid_str and referrer_id in existing_data:
-                user_data = get_user(uid)
-                user_data["referred_by"] = referrer_id
-                existing_data[uid_str] = user_data
-                save_data(existing_data, USER_DATA_FILE)
-                
-                settings = load_settings()
-                refer_bonus = settings.get("refer_bonus", DEFAULT_REFER_BONUS)
-                
-                referrer_data = existing_data[referrer_id]
-                referrer_data["balance"] = round(referrer_data.get("balance", 0.0) + refer_bonus, 4)
-                referrer_data["referrals"] = referrer_data.get("referrals", 0) + 1
-                referrer_data["referral_earnings"] = round(referrer_data.get("referral_earnings", 0.0) + refer_bonus, 4)
-                
-                existing_data[referrer_id] = referrer_data
-                save_data(existing_data, USER_DATA_FILE)
-                
-                try:
-                    ref_fullname = full_name or "N/A"
-                    ref_uname = username if username else "N/A"
-                    await context.bot.send_message(
-                        chat_id=int(referrer_id),
-                        text=(
-                            f"{p_em('gift_box')} <b>New Referral Successful!</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                            f"👤 User: {html.escape(ref_fullname)} (@{ref_uname})\n"
-                            f"💵 Bonus Credited: <code>+{refer_bonus}$</code>"
-                        ),
-                        parse_mode="HTML"
-                    )
-                except Exception as e:
-                    print(f"Failed to notify referrer: {e}")
-    
-    context.user_data.clear()
-    
-    settings = load_settings()
-    start_msg = settings.get("welcome_message", DEFAULT_WELCOME_MESSAGE)
-    
-    try:
-        bot_info = await context.bot.get_me()
-        bot_name = bot_info.first_name
-        start_msg = start_msg.replace("MINO NUMBER BOT", bot_name).replace("Fresh Otp Master bot", bot_name)
-    except Exception:
-        pass
-    
-    await update.message.reply_text(start_msg, parse_mode="HTML")
-    await update.message.reply_text("PLEASE USE THE BUTTONS BELOW :", reply_markup=main_keyboard(uid))
+        elif is_referral_request(param):
+            try:
+                referrer_id = int(param)
+                if referrer_id != uid and str(referrer_id) in existing_data:
+                    context.user_data["pending_refer"] = referrer_id
+            except Exception as e:
+                print(f"Deep link referral mapping error: {e}")
+
+    if not user_info.get("lang"):
+        keyboard = InlineKeyboardMarkup([
+            [
+                make_inline_keyboard_button("🇺🇸 English", callback_data="set_lang_en", style="primary"),
+                make_inline_keyboard_button("🇧🇩 বাংলা", callback_data="set_lang_bn", style="success")
+            ]
+        ])
+        await update.message.reply_text(
+            "🌐 <b>Please select your language / দয়া করে ভাষা সিলেক্ট করুন:</b>",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+    else:
+        if not is_user_verified(uid) and not is_admin(uid):
+            await send_verification_captcha(update.effective_chat.id, context, uid)
+        else:
+            await show_join_prompt(update, context, uid)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     uid = query.from_user.id
     data = query.data
     await query.answer()
-    
+
     if not is_admin(uid) and is_user_banned(uid):
-        settings = load_settings()
-        support = settings.get("support_username", DEFAULT_SUPPORT_USERNAME)
-        await query.edit_message_text(
-            f"{p_em('ban')} <b>YOU ARE BANNED</b> {p_em('ban')}\n\n"
-            f"<blockquote>{p_em('msg')} Contact Support: {support}</blockquote>",
-            parse_mode="HTML"
-        )
-        return
-    
-    if is_under_maintenance(uid):
-        await query.message.reply_text(f"{p_em('stop')} **SYSTEM UNDER MAINTENANCE**", parse_mode="Markdown")
+        await query.edit_message_text("🚫 SYSTEM BANNED 🚫")
         return
 
-    if data == "toggle_fj_system":
-        settings = load_settings()
-        settings["force_join_enabled"] = not settings.get("force_join_enabled", False)
-        save_settings(settings)
-        await manage_force_join_menu(query, context, is_callback=True)
-        return
+    if data == "set_lang_en":
+        user_info = get_user(uid)
+        had_lang = user_info.get("lang") is not None
+        set_user_lang(uid, "en")
         
-    if data == "add_fj_channel":
-        context.user_data["admin_edit_mode"] = "add_force_join"
+        welcome_txt = get_dynamic_message_text("WELCOME", "en")
+        if not welcome_txt:
+            welcome_txt = LANG_TEXTS["en"]["welcome"]
+            
+        if had_lang:
+            await query.message.delete()
+            await context.bot.send_message(chat_id=uid, text="🟢 <b>Language changed to English!</b>", parse_mode="HTML")
+            await context.bot.send_message(chat_id=uid, text=welcome_txt, parse_mode="HTML", reply_markup=main_keyboard(uid))
+        else:
+            if not is_user_verified(uid) and not is_admin(uid):
+                await send_verification_captcha(query.message.chat_id, context, uid)
+            else:
+                await show_join_prompt(query, context, uid)
+        return
+
+    if data == "set_lang_bn":
+        user_info = get_user(uid)
+        had_lang = user_info.get("lang") is not None
+        set_user_lang(uid, "bn")
+        
+        welcome_txt = get_dynamic_message_text("WELCOME", "bn")
+        if not welcome_txt:
+            welcome_txt = LANG_TEXTS["bn"]["welcome"]
+            
+        if had_lang:
+            await query.message.delete()
+            await context.bot.send_message(chat_id=uid, text="🟢 <b>ভাষা পরিবর্তন সফল হয়েছে!</b>", parse_mode="HTML")
+            await context.bot.send_message(chat_id=uid, text=welcome_txt, parse_mode="HTML", reply_markup=main_keyboard(uid))
+        else:
+            if not is_user_verified(uid) and not is_admin(uid):
+                await send_verification_captcha(query.message.chat_id, context, uid)
+            else:
+                await show_join_prompt(query, context, uid)
+        return
+
+    if data.startswith("captcha_opt_"):
+        idx = int(data.replace("captcha_opt_", ""))
+        opts = context.user_data.get("captcha_options", [])
+        correct_ans = context.user_data.get("captcha_correct", "")
+        
+        if not opts or idx >= len(opts):
+            await query.edit_message_text("❌ Verification session expired. Please type /start again.")
+            return
+
+        selected = opts[idx]
+        if selected == correct_ans:
+            set_user_verified(uid, True)
+            await query.message.delete()
+            await context.bot.send_message(chat_id=uid, text="✅ <b>Verification Successful! / সিকিউরিটি ভেরিফিকেশন সফল!</b>", parse_mode="HTML")
+            await show_join_prompt(query, context, uid)
+        else:
+            lang = get_user_lang(uid)
+            alert_msg = "❌ Verification Failed! Try again." if lang == "en" else "❌ ভেরিফিকেশন ব্যর্থ হয়েছে! আবার চেষ্টা করুন।"
+            await context.bot.send_message(chat_id=uid, text=f"⚠️ {alert_msg}")
+            await send_verification_captcha(query.message.chat_id, context, uid)
+        return
+
+    if data == "verify_join":
+        lang = get_user_lang(uid)
+        cur_cfg = load_sys_config()
+        
+        is_member = await check_channel_membership(context.bot, uid, cur_cfg["official_channel_id"])
+        if not is_member and not is_admin(uid):
+            alert_fail = "🛑 You have not joined the official channel yet!" if lang == "en" else "🛑 এখনো চ্যানেল জয়েন করেন নাই!"
+            await context.bot.send_message(chat_id=uid, text=f"⚠️ <b>{alert_fail}</b>", parse_mode="HTML")
+            return
+
+        pending_ref = context.user_data.get("pending_refer")
+        if pending_ref:
+            try:
+                existing_data = load_data(USER_DATA_FILE)
+                if str(pending_ref) in existing_data:
+                    current_count = get_referral_count(pending_ref)
+                    new_count = current_count + 1
+                    update_referral_count(pending_ref, new_count)
+                    await update_db_balance(pending_ref, REFERRAL_PRICE)
+                    log_global_activity(pending_ref, "REFERRAL_JOINED", {"referred_user": uid})
+                    try:
+                        msg = (
+                            f"🎉 <b>[ NODE REPLICATED ]</b>\n\n"
+                            f"<blockquote>🗝️ NEW_ID: <code>{uid}</code>\n"
+                            f"💰 REWARD_HARVESTED: {format_balance(REFERRAL_PRICE)} BDT\n"
+                            f"👥 TOTAL NODES: {new_count}</blockquote>"
+                        )
+                        await context.bot.send_message(pending_ref, msg, parse_mode="HTML")
+                    except:
+                        pass
+            except Exception as e:
+                print(f"Error executing pending referral: {e}")
+            context.user_data["pending_refer"] = None
+
+        await query.message.delete()
+        
+        welcome_txt = get_dynamic_message_text("WELCOME", lang)
+        if not welcome_txt:
+            welcome_txt = LANG_TEXTS[lang]["welcome"]
+            
         await context.bot.send_message(
             chat_id=uid,
-            text="➕ <b>Enter the channel username to add (e.g. @MyChannel):</b>",
+            text=welcome_txt,
             parse_mode="HTML",
-            reply_markup=cancel_keyboard()
+            reply_markup=main_keyboard(uid)
         )
         return
-        
-    if data.startswith("del_fj_"):
-        channel_to_del = data.replace("del_fj_", "")
-        settings = load_settings()
-        channels = settings.get("force_join_channels", [])
-        if channel_to_del in channels:
-            channels.remove(channel_to_del)
-            settings["force_join_channels"] = channels
-            save_settings(settings)
-            await query.answer(f"✅ Deleted {channel_to_del}", show_alert=True)
-        await manage_force_join_menu(query, context, is_callback=True)
-        return
 
-    if data == "check_force_join":
-        is_joined = await is_user_joined_force_channels(uid, context)
-        if is_joined:
+    if data == "close_menu":
+        try:
             await query.message.delete()
-            settings = load_settings()
-            start_msg = settings.get("welcome_message", DEFAULT_WELCOME_MESSAGE)
-            await context.bot.send_message(chat_id=uid, text=start_msg, parse_mode="HTML")
-            await context.bot.send_message(chat_id=uid, text="PLEASE USE THE BUTTONS BELOW :", reply_markup=main_keyboard(uid))
-        else:
-            await query.answer("❌ আপনি can't access! আপনি এখনো সব চ্যানেলে জয়েন করেননি!", show_alert=True)
+        except:
+            pass
         return
 
-    if data.startswith("setmethod_"):
-        method_name = data.split("_")[1]
-        uid_str = str(uid)
-        user_db = load_data(USER_DATA_FILE)
-        if uid_str in user_db:
-            user_db[uid_str]["withdrawal_method"] = method_name
-            save_data(user_db, USER_DATA_FILE)
-            await query.edit_message_text(
-                f"{p_em('done')} <b>WITHDRAWAL METHOD SET SUCCESSFULLY!</b>\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"<blockquote>Your withdrawal method is now set to: <b>{method_name}</b></blockquote>\n"
-                f"You can now use the Balance menu to request withdrawals.",
-                parse_mode="HTML"
+    # LIVEACCESS — SERVICE SELECTION (Page 1)
+    if data.startswith("svc_"):
+        try:
+            idx = int(data.replace("svc_", ""))
+        except:
+            await query.answer("Invalid request.", show_alert=True)
+            return
+            
+        services = context.user_data.get("la_services", [])
+        if idx >= len(services):
+            await query.answer("Session expired. Please retry.", show_alert=True)
+            return
+            
+        svc = services[idx]
+        sid = svc.get("sid", "Service")
+        display_name = svc.get("display_name", sid)
+        ranges = svc.get("ranges", [])
+        
+        if not ranges:
+            await query.answer("No active nodes available for this service.", show_alert=True)
+            return
+
+        context.user_data["la_svc_idx"] = idx
+        context.user_data["la_sid"] = sid
+        context.user_data["la_ranges"] = ranges
+        
+        keyboard = _build_countries_keyboard(ranges, sid, uid)
+        
+        # GET_NUMBER_PAGE2 কাস্টম টেক্সট লোড করা (Page 2: Country Selection)
+        lang = get_user_lang(uid)
+        page2_txt = get_dynamic_message_text("GET_NUMBER_PAGE2", lang)
+        if not page2_txt:
+            page2_txt = LANG_TEXTS[lang]["pick_country"]
+            
+        try:
+            await query.message.edit_text(
+                page2_txt.format(sid=html.escape(display_name)),
+                parse_mode="HTML",
+                reply_markup=keyboard
             )
-        else:
-            await query.answer("❌ Error: User not found.", show_alert=True)
+        except Exception as e:
+            # ফরম্যাটিং ইরর এড়ালে সাধারণ রেপ্লাই
+            await query.message.edit_text(
+                f"🌍 Service: {html.escape(display_name)}\nSelect country range:",
+                reply_markup=keyboard
+            )
         return
 
-    if data == "initiate_withdraw":
-        user_data = get_user(uid)
-        balance = user_data.get("balance", 0.0)
-        method_name = user_data.get("withdrawal_method")
-        min_w, max_w = get_withdraw_limits()
-        
-        if not method_name:
-            await query.answer("❌ Please set your withdrawal method first using /setwithdrawalmethod !", show_alert=True)
+    # LIVEACCESS — RANGE SELECTION
+    if data.startswith("rng_"):
+        try:
+            idx = int(data.replace("rng_", ""))
+        except:
+            await query.answer("Invalid request.", show_alert=True)
             return
             
-        if balance < min_w:
-            await query.answer(f"❌ Insufficient balance! Minimum withdrawal is {min_w}$.", show_alert=True)
+        ranges = context.user_data.get("la_ranges", [])
+        if idx >= len(ranges):
+            await query.answer("Timeout error. Re-try.", show_alert=True)
             return
             
-        context.user_data["withdraw_method"] = method_name
-        context.user_data["withdraw_mode"] = "amount"
+        range_text = ranges[idx]
+        sid = context.user_data.get("la_sid", "")
         
-        await query.message.reply_text(
-            f"{p_em('money')} **Withdrawal Method: {method_name}**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💵 Total Balance: `{balance:.4f}$`\n"
-            f"📉 Minimum Withdraw: `{min_w}$`\n\n"
-            f"Please enter the amount to withdraw (in $):",
-            parse_mode="Markdown",
-            reply_markup=cancel_keyboard()
+        asyncio.create_task(fast_allocate_number(query, context, range_text, sid))
+        return
+
+    # CUSTOM RANGE SETTINGS
+    if data == "custom_range":
+        context.user_data["mode"] = "custom_range"
+        await query.message.edit_text(
+            LANG_TEXTS[get_user_lang(uid)]["custom_range_prompt"],
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                make_inline_keyboard_button("◀️ BACK", callback_data="back_services", style="danger")
+            ]])
         )
         return
 
-    if data == "back_to_menu_inline":
+    # BACK TO SERVICES CALLBACK
+    if data == "back_services":
+        services = get_cached_services()
+        if not services:
+            await query.message.edit_text("❌ Connection failed.")
+            return
+            
+        filtered_services = filter_important_services(services)
+        context.user_data["la_services"] = filtered_services
+        keyboard = _build_services_keyboard(filtered_services, uid)
+        
+        await query.message.edit_text(
+            "📍 <b>Select a service:</b>",
+            parse_mode="HTML",
+            reply_markup=keyboard
+        )
+        return
+
+    # SAME RANGE POLLING
+    if data == "same_range":
+        r_text = last_range.get(uid)
+        sid_text = last_sid.get(uid) or ""
+        if r_text:
+            try:
+                await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup([[
+                    make_inline_keyboard_button("📢 OTP GROUP", url="https://t.me/topotp76", style="primary")
+                ]]))
+            except:
+                pass
+            # INSTANT ALLOCATION FOR EXACT SERVICE PRESERVING CONTEXT
+            asyncio.create_task(fast_allocate_number(query, context, r_text, sid_text))
+        return
+
+    # TOGGLE LIVE SERVICE (ADMIN CALLBACK)
+    if data.startswith("toggle_svc_"):
+        svc_key = data.replace("toggle_svc_", "")
+        sc = load_sys_config()
+        active_map = sc.get("active_services", {})
+        
+        active_map[svc_key] = not active_map.get(svc_key, True)
+        sc["active_services"] = active_map
+        save_sys_config(sc)
+        
+        services = get_cached_services()
+        sids = sorted(list(set(svc.get("sid", "").strip().upper() for svc in services if svc.get("sid"))))
+        if not sids:
+            sids = ["INSTAGRAM", "TELEGRAM", "WHATSAPP", "FACEBOOK", "TIKTOK"]
+            
+        buttons = []
+        for key in sids:
+            is_active = active_map.get(key, True)
+            status_lbl = "🟢 ON" if is_active else "🔴 OFF"
+            btn_txt = f"{key} [{status_lbl}]"
+            
+            emoji_id = sc.get("service_emojis", {}).get(key, "")
+            emoji_indicator = "✨" if emoji_id else "✏️"
+            
+            buttons.append([
+                make_inline_keyboard_button(btn_txt, callback_data=f"toggle_svc_{key}"),
+                make_inline_keyboard_button(f"{emoji_indicator} Edit Emoji", callback_data=f"edit_emoji_{key}")
+            ])
+        buttons.append([make_inline_keyboard_button("❌ Close", callback_data="close_menu", style="danger")])
+        
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    # EDIT LIVE SERVICE EMOJI (ADMIN CALLBACK)
+    if data.startswith("edit_emoji_"):
+        svc_key = data.replace("edit_emoji_", "")
+        context.user_data["admin_edit_emoji_target"] = svc_key
+        
+        try:
+            await query.message.delete()
+        except:
+            pass
+            
+        prompt_text = (
+            f"✏️ <b>[ SET PREMIUM EMOJI ID ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"Target Service: <code>{svc_key}</code>\n\n"
+            f"Please send the <b>Premium Emoji ID</b> you want to assign to this service.\n"
+            f"Example: <code>5330237710655306682</code>\n\n"
+            f"<i>(Type <code>clear</code> to reset and remove custom emoji)</i>"
+        )
+        await context.bot.send_message(
+            chat_id=uid,
+            text=prompt_text,
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    # ==================== ALL COUNTRY MANAGER INTERACTIVE HANDLERS ====================
+    if data == "ac_main":
+        buttons = [
+            [
+                make_inline_keyboard_button("📱 Service & Country", callback_data="ac_svc_list"),
+                make_inline_keyboard_button("🌍 All Country List", callback_data="ac_all_list_0")
+            ],
+            [
+                make_inline_keyboard_button("❌ Close Panel", callback_data="close_menu", style="danger")
+            ]
+        ]
+        await query.message.edit_text(
+            "🗺️ <b>ALL COUNTRY MANAGER SYSTEM</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Select one of the configurations below to customize custom fonts, prefixes, or Premium Animated Emojis:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    if data == "ac_svc_list":
+        services = get_cached_services()
+        if not services:
+            await _do_liveaccess_fetch()
+            services = get_cached_services()
+            
+        filtered_services = filter_important_services(services)
+        context.user_data["la_services"] = filtered_services
+        
+        buttons = []
+        for i, svc in enumerate(filtered_services):
+            sid = svc.get("sid", "").strip()
+            display_name = svc.get("display_name", sid)
+            buttons.append([
+                make_inline_keyboard_button(display_name, callback_data=f"ac_svc_sel_{i}")
+            ])
+            
+        buttons.append([make_inline_keyboard_button("◀️ Back", callback_data="ac_main")])
+        await query.message.edit_text(
+            "📱 <b>SELECT TARGET SERVICE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Select a service to view its active countries and customize their fonts/flags:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    if data.startswith("ac_svc_sel_"):
+        idx = int(data.replace("ac_svc_sel_", ""))
+        services = context.user_data.get("la_services", [])
+        if not services:
+            services = filter_important_services(get_cached_services())
+            context.user_data["la_services"] = services
+            
+        if idx >= len(services):
+            await query.answer("Session expired. Please retry.", show_alert=True)
+            return
+            
+        svc = services[idx]
+        sid = svc.get("sid", "Service")
+        ranges = svc.get("ranges", [])
+        
+        btns = []
+        seen = set()
+        for r in ranges:
+            prefix = re.sub(r'[xX]+$', '', str(r)).strip()
+            prefix_clean = re.sub(r'\D', '', prefix)
+            if not prefix_clean:
+                continue
+            flag, cname = get_country_info(prefix_clean)
+            label = f"{flag} {cname} (+{prefix_clean})"
+            emoji_key = f"COUNTRY_{prefix_clean}"
+            if prefix_clean not in seen:
+                seen.add(prefix_clean)
+                if is_premium_emoji_set(emoji_key):
+                    btns.append(make_inline_keyboard_button(f"✏️ {label}", callback_data=f"ac_edit_{prefix_clean}", emoji_key=emoji_key))
+                else:
+                    btns.append(make_inline_keyboard_button(f"✏️ {label}", callback_data=f"ac_edit_{prefix_clean}"))
+                
+        rows = [btns[i:i+2] for i in range(0, len(btns), 2)]
+        rows.append([make_inline_keyboard_button("◀️ Back to Services", callback_data="ac_svc_list")])
+        
+        await query.message.edit_text(
+            f"📱 <b>SERVICE: {sid}</b>\n\nSelect a country range to customize name/flag emoji:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(rows)
+        )
+        return
+
+    if data.startswith("ac_all_list_"):
+        page = int(data.replace("ac_all_list_", ""))
+        await query.message.edit_text(
+            "🌍 <b>ALL COUNTRIES DATABASE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Select any country from the index to customize its flag, name, or premium animated emoji:",
+            parse_mode="HTML",
+            reply_markup=_build_all_countries_keyboard(page)
+        )
+        return
+
+    if data.startswith("ac_edit_"):
+        prefix = data.replace("ac_edit_", "")
+        context.user_data["temp_override_prefix"] = prefix
+        context.user_data["admin_country_override_mode"] = "input_flag_name"
+        
+        flag, name = get_country_info(prefix)
         await query.message.delete()
         await context.bot.send_message(
             chat_id=uid,
-            text=f"{p_em('home')} Returning to Main Menu.",
-            reply_markup=main_keyboard(uid)
+            text=f"🌍 <b>[ CUSTOMIZE COUNTRY OVERRIDE ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                 f"Prefix Code: <code>{prefix}</code>\n"
+                 f"Current Display: {flag} {name}\n\n"
+                 f"Please send the new flag emoji, name, and optional Premium Emoji ID separated by `|`.\n\n"
+                 f"Format: <code>Flag | Country Name | Premium Emoji ID</code>\n"
+                 f"Example with Emoji ID:\n<code>🇨🇲 | Cameroon VIP | 5330237710655306682</code>\n\n"
+                 f"<i>(Type <code>clear</code> to reset back to defaults)</i>",
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    if data == "ac_custom_prefix_input":
+        context.user_data["admin_country_override_mode"] = "input_prefix"
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🌍 <b>[ MANUAL PREFIX INPUT ]</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                 "Please enter any country prefix/code you want to customize (e.g. 237, 880):",
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    # ==================== SYSTEM CUSTOMIZATION ENGINE (ADMIN CALLBACKS) ====================
+    if data.startswith("cust_select_"):
+        key = data.replace("cust_select_", "")
+        sc = load_sys_config()
+        btn_data = sc.get("custom_buttons", {}).get(key, {})
+        
+        label_en = btn_data["labels"].get("en", "")
+        label_bn = btn_data["labels"].get("bn", "")
+        msg_en = btn_data["messages"].get("en", "")
+        msg_bn = btn_data["messages"].get("bn", "")
+        emoji_id = btn_data.get("emoji_id", "")
+        
+        human_title = CUSTOMIZER_HUMAN_NAMES.get(key, key)
+        
+        text = (
+            f"🛠️ <b>CUSTOMIZING: {human_title}</b>\n"
+            f"🏷️ Key ID: <code>{key}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏷️ <b>Label (EN):</b> {html.escape(label_en)}\n"
+            f"🏷️ <b>Label (BN):</b> {html.escape(label_bn)}\n\n"
+            f"📝 <b>Msg (EN):</b>\n<blockquote>{html.escape(msg_en)}</blockquote>\n\n"
+            f"📝 <b>Msg (BN):</b>\n<blockquote>{html.escape(msg_bn)}</blockquote>\n\n"
+            f"✨ <b>Premium Emoji ID:</b> <code>{emoji_id if emoji_id else 'None'}</code>\n\n"
+            f"আপনি যা পরিবর্তন করতে চান তা নিচে থেকে সিলেক্ট করুন:"
+        )
+        
+        buttons = [
+            [
+                make_inline_keyboard_button("🏷️ Edit Label (EN)", callback_data=f"cust_edit_{key}|label|en"),
+                make_inline_keyboard_button("🏷️ Edit Label (BN)", callback_data=f"cust_edit_{key}|label|bn")
+            ],
+            [
+                make_inline_keyboard_button("📝 Edit Msg (EN)", callback_data=f"cust_edit_{key}|msg|en"),
+                make_inline_keyboard_button("📝 Edit Msg (BN)", callback_data=f"cust_edit_{key}|msg|bn")
+            ],
+            [
+                make_inline_keyboard_button("✨ Edit Premium Emoji ID", callback_data=f"cust_edit_{key}|emoji|none")
+            ],
+            [
+                make_inline_keyboard_button("◀️ Back to Customizer", callback_data="cust_back_main", style="danger")
+            ]
+        ]
+        await query.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    if data.startswith("cust_edit_"):
+        payload = data.replace("cust_edit_", "")
+        parts = payload.split("|")
+        key = parts[0]
+        field = parts[1]
+        target_lang = parts[2] if len(parts) > 2 else "none"
+        
+        context.user_data["admin_customizer_target"] = {
+            "key": key,
+            "field": field,
+            "lang": target_lang
+        }
+        
+        human_title = CUSTOMIZER_HUMAN_NAMES.get(key, key)
+        field_desc = f"Label ({target_lang.upper()})" if field == "label" else f"Message ({target_lang.upper()})" if field == "msg" else "Premium Emoji ID"
+        
+        prompt = (
+            f"📝 <b>[ EDIT {field_desc.upper()} ]</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Target Section: <b>{human_title}</b>\n"
+            f"Target Key: <code>{key}</code>\n\n"
+            f"দয়া করে আপনার কাস্টম টেক্সট বা আইডি-টি এখানে রিপ্লাই হিসেবে টাইপ করে পাঠান।"
+        )
+        if field == "emoji":
+            prompt += "\n\n<i>(ইমোজি রিমুভ করতে চাইলে '<code>clear</code>' লিখে পাঠান)</i>"
+        elif field == "msg":
+            prompt += (
+                "\n\n💡 <i>আপনি টেক্সটের যেকোনো জায়গায় প্রিমিয়াম কাস্টম ইমোজি যুক্ত করতে পারেন এই ফরম্যাটে:</i>\n"
+                "<code>&lt;tg-emoji emoji-id=\"প্রিমিয়াম_ইমোজি_আইডি\"&gt;🌟&lt;/tg-emoji&gt;</code>"
+            )
+            
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=uid,
+            text=prompt,
+            parse_mode="HTML",
+            reply_markup=cancel_keyboard(uid)
+        )
+        return
+
+    if data == "cust_back_main":
+        sc = load_sys_config()
+        custom_buttons = sc.get("custom_buttons", {})
+        
+        buttons = []
+        for key in custom_buttons.keys():
+            display_title = CUSTOMIZER_HUMAN_NAMES.get(key, f"✏️ {key}")
+            buttons.append([
+                make_inline_keyboard_button(display_title, callback_data=f"cust_select_{key}")
+            ])
+        buttons.append([make_inline_keyboard_button("❌ Close", callback_data="close_menu", style="danger")])
+        
+        await query.message.edit_text(
+            "📝 <b>SYSTEM CUSTOMIZER ENGINE</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "নিচের যে বাটন বা টেক্সটটি এডিট করতে চান—তা সিলেক্ট করুন:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        return
+
+    # WITHDRAW TRIGGERS
+    if data == "withdraw_start":
+        balance = get_user(uid)['balance']
+        if balance < MIN_WITHDRAW:
+            await query.message.reply_text(
+                LANG_TEXTS[get_user_lang(uid)]["withdraw_min_err"].format(bal=format_balance(balance), min_val=MIN_WITHDRAW),
+                parse_mode="HTML"
+            )
+            return
+        context.user_data["withdraw_mode"] = "select_method"
+        await query.message.reply_text(
+            LANG_TEXTS[get_user_lang(uid)]["withdraw_method_prompt"],
+            reply_markup=withdraw_method_keyboard(uid)
         )
         return
 
     if data == "withdraw_confirm":
         await process_withdraw_confirm(update, context)
         return
-    
+
     if data == "withdraw_cancel":
         await process_withdraw_cancel(update, context)
         return
-    
-    if data.startswith("pre_approve_"):
-        pid = data.replace("pre_approve_", "")
-        keyboard = InlineKeyboardMarkup([
-            [
-                rbtn("NO, BACK", "danger", callback_data=f"back_admin_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("back")),
-                rbtn("YES, CONFIRM", "success", callback_data=f"admin_approve_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("done"))
-            ]
-        ])
-        await query.edit_message_text(f"{p_em('status')} **Are you sure you want to CONFIRM this payment?**", reply_markup=keyboard, parse_mode="Markdown")
-        return
-
-    if data.startswith("pre_reject_"):
-        pid = data.replace("pre_reject_", "")
-        keyboard = InlineKeyboardMarkup([
-            [
-                rbtn("NO, BACK", "danger", callback_data=f"back_admin_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("back")),
-                rbtn("YES, REJECT", "success", callback_data=f"admin_reject_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("cross"))
-            ]
-        ])
-        await query.edit_message_text(f"{p_em('status')} **Are you sure you want to REJECT this payment?**", reply_markup=keyboard, parse_mode="Markdown")
-        return
-
-    if data.startswith("back_admin_"):
-        pid = data.replace("back_admin_", "")
-        keyboard = InlineKeyboardMarkup([
-            [
-                rbtn("CANCEL", "danger", callback_data=f"pre_reject_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("cross")),
-                rbtn("CONFIRM", "success", callback_data=f"pre_approve_{pid}", icon_custom_emoji_id=EMOJI_ID_MAP.get("done"))
-            ]
-        ])
-        await query.edit_message_text(f"{p_em('stop')} **Action Cancelled. Decision again:**", reply_markup=keyboard, parse_mode="Markdown")
-        return
 
     if data.startswith("admin_approve_"):
-        payment_id = data.replace("admin_approve_", "")
-        await admin_approve_withdraw(update, context, payment_id)
+        await admin_approve_withdraw(update, context, data.replace("admin_approve_", ""))
         return
-    
+
     if data.startswith("admin_reject_"):
-        payment_id = data.replace("admin_reject_", "")
-        await admin_reject_withdraw(update, context, payment_id)
+        await admin_reject_withdraw(update, context, data.replace("admin_reject_", ""))
         return
 
-    if data == "admin_back_to_config":
-        context.user_data.clear()
-        context.user_data["admin_mode"] = "main"
-        await query.message.reply_text("Back to admin panel.", reply_markup=admin_main_keyboard())
-        return
-
-    if data == "same_range":
-        settings = load_settings()
-        cooldown = settings.get("cooldown_time", DEFAULT_COOLDOWN_TIME)
-        current_time = time.time()
-        time_passed = current_time - last_request_time.get(uid, 0.0)
-        
-        if time_passed < cooldown:
-            wait_time = round(cooldown - time_passed, 1)
-            await query.answer(f"⏱ Please wait {wait_time}s before changing number.", show_alert=True)
-            return
-
-        last_request_time[uid] = current_time
-        r_text = last_range.get(uid)
-        if r_text:
-            await query.answer("🔄 Changing number...")
-            await request_queue.put({
-                'type': 'process_numbers', 
-                'update': update, 
-                'context': context, 
-                'range_text': r_text, 
-                'count': settings.get("numbers_per_request", DEFAULT_NUMBERS_PER_REQUEST),
-                'edit_message': query.message
-            })
-
-    elif data == "back_to_apps":
-        import time as _time
-        settings = load_settings()
-        auto_range_enabled = settings.get("auto_range", True)
-        
-        cache_age = _time.monotonic() - _ranges_cache["updated_at"]
-        if auto_range_enabled and _ranges_cache["data"] and cache_age < 300:
-            top_ranges_by_app = _ranges_cache["data"]
-        else:
-            top_ranges_by_app, err = await fetch_top55_ranges_by_app()
-            if err or not top_ranges_by_app:
-                top_ranges_by_app, err = await fetch_top55_ranges_by_app()
-            if top_ranges_by_app:
-                if auto_range_enabled:
-                    _ranges_cache["data"] = top_ranges_by_app
-                    _ranges_cache["updated_at"] = _time.monotonic()
-            else:
-                await query.edit_message_text(
-                    f"{p_em('cross')} <b>Could not load ranges.</b>\n\n"
-                    "<blockquote>Please try again in a moment.</blockquote>",
-                    parse_mode="HTML"
-                )
-                return
-        context.user_data["top_ranges_by_app"] = top_ranges_by_app
-        buttons = build_app_buttons_from_cache(top_ranges_by_app)
-        keyboard = InlineKeyboardMarkup(buttons)
-        msg = f"{p_em('get_number_btn')} <b>SELECT APP TO GET</b>"
-        await query.edit_message_text(msg, parse_mode="HTML", reply_markup=keyboard)
-        return
-
-    elif data.startswith("sel_app_"):
-        app_name = data[len("sel_app_"):]
-        cached = context.user_data.get("top_ranges_by_app", {})
-        if app_name in cached:
-            info = cached[app_name]
-            ranges = info["ranges"]
-        else:
+    if data.startswith("my_ref_"):
+        target_uid = data.replace("my_ref_", "")
+        all_logs = load_data(ACTIVITY_LOGS_FILE)
+        my_referrals = [log for log in all_logs if str(log.get('uid')) == str(target_uid) and log.get('action') == "REFERRAL_JOINED"]
+        content = f"👥 REPLICATION METRICS — {target_uid}\n━━━━━━━━━━━━━━━━━━━━━━\nTOTAL NODES: {len(my_referrals)}\n\n"
+        for i, log in enumerate(my_referrals, 1):
             try:
-                fresh_data, fetch_err = await fetch_top55_ranges_by_app()
-                if fresh_data and app_name in fresh_data:
-                    info  = fresh_data[app_name]
-                    ranges = info["ranges"]
-                    context.user_data["top_ranges_by_app"] = fresh_data
-                    
-                    settings = load_settings()
-                    if settings.get("auto_range", True):
-                        import time as _time2
-                        _ranges_cache["data"]       = fresh_data
-                        _ranges_cache["updated_at"] = _time2.monotonic()
-                else:
-                    ranges = []
-            except Exception as e:
-                await query.edit_message_text(f"❌ Failed to load ranges: {e}")
-                return
-        if not ranges:
-            await query.edit_message_text(f"📱 {app_name} ➜ No active ranges found.", parse_mode="HTML")
-            return
-
-        country_buttons_map = {}
-        for rng in ranges:
-            flag, name = get_country_info(rng)
-            country_key = f"{flag} {name}"
-            if country_key not in country_buttons_map:
-                country_buttons_map[country_key] = []
-            country_buttons_map[country_key].append(rng)
-
-        buttons = []
-        row = []
-        if "country_ranges" not in context.user_data:
-            context.user_data["country_ranges"] = {}
-
-        for country_label, rng_list in country_buttons_map.items():
-            idx = len(context.user_data["country_ranges"]) + 1
-            idx_str = str(idx)
-            context.user_data["country_ranges"][idx_str] = {
-                "app": app_name,
-                "label": country_label,
-                "ranges": rng_list
-            }
-            
-            flag_emoji = ""
-            match = re.search(r'([\U0001F1E6-\U0001F1FF]{2})', country_label)
-            flag_emoji_id = None
-            if match:
-                flag_emoji = match.group(1)
-                flag_emoji_id = PREMIUM_FLAGS.get(flag_emoji)
-            
-            if flag_emoji_id:
-                clean_label = country_label.replace(flag_emoji, "").strip()
-                row.append(rbtn(clean_label, "primary", callback_data=f"sel_cty_{idx_str}", icon_custom_emoji_id=flag_emoji_id))
-            else:
-                row.append(rbtn(country_label, "primary", callback_data=f"sel_cty_{idx_str}"))
-            
-            if len(row) == 2:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
-        
-        buttons.append([rbtn("Back", "danger", callback_data="back_to_apps", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"))])
-        keyboard = InlineKeyboardMarkup(buttons)
-        context.user_data["selected_app"] = app_name
-        msg = f"{p_em('status')} <b>Select Country for {app_name}:</b>"
-        await query.edit_message_text(msg, parse_mode="HTML", reply_markup=keyboard)
-        return
-
-    elif data.startswith("sel_cty_"):
-        settings = load_settings()
-        cooldown = settings.get("cooldown_time", DEFAULT_COOLDOWN_TIME)
-        current_time = time.time()
-        time_passed = current_time - last_request_time.get(uid, 0.0)
-        
-        if time_passed < cooldown:
-            wait_time = round(cooldown - time_passed, 1)
-            await query.answer(f"⏱ Please wait {wait_time}s before requesting a new number.", show_alert=True)
-            return
-
-        idx_str = data[len("sel_cty_"):]
-        cty_info = context.user_data.get("country_ranges", {}).get(idx_str)
-        if not cty_info:
-            await query.edit_message_text(f"{p_em('cross')} Session expired. Please try getting number again.", parse_mode="HTML")
-            return
-        
-        app_name = cty_info["app"]
-        country_label = cty_info["label"]
-        country_ranges = cty_info["ranges"]
-
-        available_ranges = country_ranges[:45]
-        selected_range = random.choice(available_ranges)
-
-        clean_rid = clean_range_id(selected_range)
-
-        count = settings.get("numbers_per_request", DEFAULT_NUMBERS_PER_REQUEST)
-        api_key, base_url = get_api_credentials()
-        tasks = []
-        for _ in range(count):
-            tasks.append(client_async.post(
-                f"{base_url}/getnumber",
-                json={"api_key": api_key, "rid": clean_rid, "national": 1, "remove_plus": 1}
-            ))
-            
-        responses = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        generated_nums = []
-        for r in responses:
-            if isinstance(r, Exception):
-                print(f"[DEBUG] Batch fetch exception: {r}")
+                dt_obj = datetime.fromisoformat(log['timestamp'])
+                ref_id = log.get('details', {}).get('referred_user', 'N/A')
+                content += f"{i}. NODE_ID: {ref_id} | {dt_obj.strftime('%d/%m/%Y %I:%M %p')}\n"
+            except:
                 continue
-            try:
-                print(f"[DEBUG] Batch response Status: {r.status_code}")
-                numdata = r.json()
-                if isinstance(numdata, dict):
-                    if numdata.get("status") == "success":
-                        full_number = numdata.get("number")
-                        if full_number:
-                            generated_nums.append(normalize_number(full_number))
-            except Exception as e:
-                print(f"[DEBUG] Batch response parse error: {e}")
-                continue
-
-        if not generated_nums:
-            kb = InlineKeyboardMarkup([[rbtn("Back", "danger", callback_data=f"sel_app_{app_name}", icon_custom_emoji_id=EMOJI_ID_MAP.get("back"))]])
-            await query.edit_message_text(f"{p_em('cross')} FAILED ➜ No valid numbers could be fetched.", reply_markup=kb, parse_mode="HTML")
-            return
-
-        for g_num in generated_nums:
-            active_numbers[g_num] = {"uid": uid, "range": selected_range, "timestamp": datetime.now().isoformat()}
-            save_number_range_info(uid, g_num, selected_range)
-        save_active_numbers(active_numbers)
-        
-        last_range[uid] = selected_range
-        last_request_time[uid] = current_time
-        add_number_taken(uid, len(generated_nums))
-        
-        country_flag, country_name_local = get_country_info(generated_nums[0])
-        
-        num_lines = []
-        for idx, g_num in enumerate(generated_nums, 1):
-            num_lines.append(f"<blockquote>{p_em('get_number_btn')} <b>Number {idx}:</b> <code>+{g_num}</code></blockquote>")
-        
-        txt = (
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f" {p_em('get_number_btn')} <b>YOUR ACTIVE NUMBER DETAILS</b> {p_em('get_number_btn')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"<blockquote><b>{p_em('setting')} App     :</b> <code>{app_name}</code></blockquote>\n"
-            f"<blockquote><b>{p_em('status')} Country :</b> {country_flag} <code>{country_name_local}</code></blockquote>\n"
-            + "\n".join(num_lines) + "\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>\n"
-            f"{p_em('waiting')} <b>SMS STATUS:</b> Waiting for message... {p_em('waiting')}\n"
-            f"<b>━━━━━━━━━━━━━━━━━━━━━━━━</b>"
-        )
-        
-        settings = load_settings()
-        otp_group_url = settings.get("otp_group_url", DEFAULT_OTP_GROUP_URL)
-        
-        kb2 = InlineKeyboardMarkup([
-            [rbtn("Change Number", "primary", callback_data="same_range", icon_custom_emoji_id=EMOJI_ID_MAP.get("change_number"))],
-            [rbtn("Live OTP Group", "success", url=otp_group_url, icon_custom_emoji_id=EMOJI_ID_MAP.get("live"))]
-        ])
-        
-        await query.edit_message_text(txt, parse_mode="HTML", reply_markup=kb2)
+        f = io.BytesIO(content.encode())
+        f.name = f"REF_{target_uid}.txt"
+        await context.bot.send_document(chat_id=uid, document=f, caption="QA **REPLICATION LOGS GENERATED**", parse_mode="Markdown")
         return
 
-    elif data == "edit_txt_welcome":
-        context.user_data["admin_edit_mode"] = "welcome"
-        await context.bot.send_message(uid, f"{p_em('msg')} <b>নতুন Welcome Message টাইপ করে পাঠান:</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-    elif data == "edit_txt_otpgroup":
-        context.user_data["admin_edit_mode"] = "otpgroup"
-        await context.bot.send_message(uid, f"{p_em('link')} <b>নতুন OTP Group লিংক পাঠান (https:// সহ):</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-    elif data == "edit_txt_channel":
-        context.user_data["admin_edit_mode"] = "channel"
-        await context.bot.send_message(uid, f"{p_em('channel')} <b>নতুন Channel লিংক পাঠান (https:// সহ):</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-    elif data == "edit_txt_support":
-        context.user_data["admin_edit_mode"] = "support"
-        await context.bot.send_message(uid, f"{p_em('msg')} <b>নতুন Support Username পাঠান (@ সহ):</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-    elif data == "edit_api_key":
-        context.user_data["admin_edit_mode"] = "api_key"
-        await context.bot.send_message(uid, f"{p_em('setting')} <b>নতুন API Key টাইপ করে পাঠান:</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-    elif data == "edit_api_url":
-        context.user_data["admin_edit_mode"] = "api_url"
-        await context.bot.send_message(uid, f"{p_em('link')} <b>নতুন API Base URL পাঠান (https:// সহ):</b>", parse_mode="HTML", reply_markup=cancel_keyboard())
-        return
-
-    elif data == "man_range_menu":
-        await show_manual_ranges_menu(query, context, is_callback=True)
-        return
-    elif data == "toggle_auto_range_callback":
-        settings = load_settings()
-        settings["auto_range"] = not settings.get("auto_range", True)
-        save_settings(settings)
-        _ranges_cache["data"] = None
-        _ranges_cache["updated_at"] = 0.0
-        await show_manual_ranges_menu(query, context, is_callback=True)
-        return
-    elif data == "man_add_service":
-        context.user_data["admin_edit_mode"] = "add_manual_service"
-        await context.bot.send_message(
-            chat_id=uid,
-            text="✍️ <b>Enter the name of the new manual service (e.g., Telegram, IMO):</b>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-    elif data == "man_del_service_list":
-        manual_data = load_manual_ranges()
-        if not manual_data:
-            await query.answer("No manual services available to delete!", show_alert=True)
-            return
-        buttons = []
-        for app in manual_data.keys():
-            buttons.append([rbtn(f"Delete {app}", "danger", callback_data=f"man_delsrv_{app}")])
-        buttons.append([rbtn("🔙 Back", "primary", callback_data="man_range_menu")])
-        await query.message.edit_text("❌ <b>Select a service to delete completely:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        return
-    elif data.startswith("man_delsrv_"):
-        app_to_del = data.replace("man_delsrv_", "")
-        manual_data = load_manual_ranges()
-        if app_to_del in manual_data:
-            del manual_data[app_to_del]
-            save_manual_ranges(manual_data)
-            await query.answer(f"✅ Deleted service: {app_to_del}", show_alert=True)
-        await show_manual_ranges_menu(query, context, is_callback=True)
-        return
-    elif data == "man_add_range_list":
-        manual_data = load_manual_ranges()
-        if not manual_data:
-            await query.answer("Please add a service first before inserting ranges!", show_alert=True)
-            return
-        buttons = []
-        for app in manual_data.keys():
-            buttons.append([rbtn(f"Add Range to {app}", "primary", callback_data=f"man_addrng_{app}")])
-        buttons.append([rbtn("🔙 Back", "primary", callback_data="man_range_menu")])
-        await query.message.edit_text("➕ <b>Select a service to add range:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        return
-    elif data.startswith("man_addrng_"):
-        app_selected = data.replace("man_addrng_", "")
-        context.user_data["admin_edit_mode"] = "add_manual_range_input"
-        context.user_data["selected_manual_service"] = app_selected
-        await context.bot.send_message(
-            chat_id=uid,
-            text=f"✍️ <b>Enter the range you want to add to {app_selected} (e.g. +23769... or +22501...):</b>",
-            parse_mode="HTML",
-            reply_markup=cancel_keyboard()
-        )
-        return
-    elif data == "man_del_range_select_service":
-        manual_data = load_manual_ranges()
-        if not manual_data:
-            await query.answer("No services or ranges configured!", show_alert=True)
-            return
-        buttons = []
-        for app in manual_data.keys():
-            buttons.append([rbtn(f"Ranges of {app}", "primary", callback_data=f"man_delrnglist_{app}")])
-        buttons.append([rbtn("🔙 Back", "primary", callback_data="man_range_menu")])
-        await query.message.edit_text("❌ <b>Select a service to view and delete its ranges:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        return
-    elif data.startswith("man_delrnglist_"):
-        app_selected = data.replace("man_delrnglist_", "")
-        manual_data = load_manual_ranges()
-        ranges = manual_data.get(app_selected, [])
-        if not ranges:
-            await query.answer("This service has no ranges to delete!", show_alert=True)
-            return
-        buttons = []
-        for idx, rng in enumerate(ranges):
-            buttons.append([rbtn(f"Delete {rng}", "danger", callback_data=f"man_delrngitem_{app_selected}_{idx}")])
-        buttons.append([rbtn("🔙 Back", "primary", callback_data="man_range_menu")])
-        await query.message.edit_text(f"❌ <b>Select a range of {app_selected} to delete:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        return
-    elif data.startswith("man_delrngitem_"):
-        parts = data.replace("man_delrngitem_", "").split("_")
-        if len(parts) >= 2:
-            app_name = "_".join(parts[:-1])
-            idx = int(parts[-1])
-            manual_data = load_manual_ranges()
-            if app_name in manual_data and idx < len(manual_data[app_name]):
-                removed_rng = manual_data[app_name].pop(idx)
-                save_manual_ranges(manual_data)
-                await query.answer(f"✅ Deleted range: {removed_rng}", show_alert=True)
-        await show_manual_ranges_menu(query, context, is_callback=True)
-        return
-
-    elif data.startswith("copy_name_"):
-        name_to_copy = data.replace("copy_name_", "")
-        await query.answer(f"✅ Copied: {name_to_copy}", show_alert=True)
-    
-    elif data.startswith("copy_id_"):
-        id_to_copy = data.replace("copy_id_", "")
-        await query.answer(f"✅ Copied ID: {id_to_copy}", show_alert=True)
-    
-    elif data.startswith("copy_text_"):
-        text_to_copy = data.replace("copy_text_", "")
-        await query.answer(f"✅ Copied: {text_to_copy}", show_alert=True)
-
-    elif data.startswith("full_logs_"):
+    if data.startswith("full_logs_"):
         target_uid = data.replace("full_logs_", "")
         stats = get_user_stats(target_uid)
-        
         all_logs = load_data(ACTIVITY_LOGS_FILE)
-        user_data_db = load_data(USER_DATA_FILE)
-        user_info = user_data_db.get(str(target_uid), {})
-        
+        user_db = load_data(USER_DATA_FILE)
+        user_info = user_db.get(str(target_uid), {})
         user_otps = [log for log in all_logs if str(log.get('uid')) == str(target_uid) and log.get('action') == "OTP_RECEIVED"]
-        
-        content = f"{p_em('status')} USER FULL DATA REPORT {p_em('status')}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        content += f"🆔 USER TELEGRAM ID : {target_uid}\n"
-        content += f"🏷️ USER NAME : {str(user_info.get('full_name', 'N/A')).upper()}\n"
-        content += f"👤 TELEGRAM USERNAME : @{str(user_info.get('username', 'NO_USERNAME')).upper()}\n"
-        content += f"💵 CURRENT BALANCE : {user_info.get('balance', 0.0)}$\n\n"
-        content += f"📊 SYSTEM STATUS SUMMARY:\n"
-        content += f"⏱ TODAY NUMBERS TAKEN : {stats['today_numbers']}\n"
-        content += f"⏱ TODAY OTPS RECEIVED : {stats['today_otps']}\n"
-        content += f"🚀 LAST 7 DAYS NUMBERS : {stats['last7d_numbers']}\n"
-        content += f"🚀 LAST 7 DAYS OTPS : {stats['last7d_otps']}\n"
-        content += f"🏆 LIFETIME NUMBERS : {stats['total_numbers']}\n"
-        content += f"🏆 LIFETIME OTPS : {stats['total_otps']}\n\n"
-        content += f"📜 DETAILED OTP LOGS:\n\n"
-        
-        if not user_otps:
-            content += "❌ NO OTP DATA FOUND FOR THIS USER.\n"
-        else:
-            for i, log in enumerate(user_otps, 1):
-                try:
-                    dt_obj = datetime.fromisoformat(log['timestamp'])
-                    formatted_time = dt_obj.strftime("%I:%M:%S %p")
-                    date_str = dt_obj.strftime("%d/%m/%Y")
-                    details = log.get('details', {})
-                    content += f"{i}. DATE: {date_str} | TIME: {formatted_time}\n"
-                    content += f"   📱 NUMBER: {details.get('number', 'N/A')}\n"
-                    content += f"   🔑 OTP: {details.get('otp', 'N/A')}\n"
-                    content += f"   💬 SMS: {details.get('sms', 'N/A')}\n"
-                    content += f"   -----------------------------------\n"
-                except: continue
-
-        content += f"\n\n🚀 GENERATED BY MINO OTP BOT"
-        
-        file = io.BytesIO(content.encode("utf-8"))
-        file.name = f"USER_{target_uid}_FULL_DATA.txt"
-        
+        content = (
+            f"📊 PACKET ANALYSIS — {target_uid}\n"
+            f"💰 WALLET: {user_info.get('balance', 0):.2f} BDT\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"TODAY NODES: {stats['today_numbers']}\n"
+            f"TODAY OTPS: {stats['today_otps']}\n"
+            f"ALL NODES: {stats['total_numbers']}\n"
+            f"ALL OTPS: {stats['total_otps']}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\nDECRYPTED PACKET LOGS:\n"
+        )
+        for i, log in enumerate(user_otps, 1):
+            try:
+                dt_obj = datetime.fromisoformat(log['timestamp'])
+                d = log.get('details', {})
+                content += f"{i}. {dt_obj.strftime('%d/%m/%Y %I:%M %p')}\n   📟 ADDR: {d.get('number', 'N/A')}\n   🔑 KEY: {d.get('otp', 'N/A')}\n\n"
+            except:
+                continue
+        f = io.BytesIO(content.encode())
+        f.name = f"USER_{target_uid}.txt"
         await context.bot.send_document(
-            chat_id=uid,
-            document=file,
-            caption=f"{p_em('done')} <b>ALL DATA FOR USER:</b> <code>{target_uid}</code>",
+            chat_id=uid, document=f,
+            caption=f"✅ <b>PACKET DATA DUMP FOR ID: <code>{target_uid}</code></b>",
             parse_mode="HTML"
         )
+        return
 
-# ==================== ACTIVE DATABASE OPTIMIZER ====================
+# ==================== MAIN CORE MODULES ====================
 
-async def optimize_database_system(chat_id):
-    data = load_data()
-    active_numbers.clear()
-    save_active_numbers(active_numbers)
-    
-    users = data.setdefault("users", [])
-    balances = data.setdefault("balances", {})
-    for uid in list(balances.keys()):
-        if uid not in users:
-            del balances[uid]
-    
-    save_data(data)
-
-# ==================== MAIN & POST INIT SECTION ====================
-
-async def post_init(application): 
+async def post_init(application):
     for _ in range(20):
         asyncio.create_task(worker())
     asyncio.create_task(monitor_loop(application))
-    asyncio.create_task(_bg_refresh_ranges())
+    asyncio.create_task(liveaccess_refresh_loop())
 
 def main():
-    request_config = HTTPXRequest(connect_timeout=20.0, read_timeout=20.0)
-    
-    app = (
-        ApplicationBuilder()
-        .token(BOT_TOKEN)
-        .request(request_config)
-        .concurrent_updates(True)
-        .post_init(post_init)
-        .build()
-    )
-    
+    app = ApplicationBuilder().token(BOT_TOKEN).concurrent_updates(True).post_init(post_init).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("get1number", get1number_command))
-    app.add_handler(CommandHandler("setwithdwalmethod", set_withdrawal_method_command))
-    app.add_handler(CommandHandler("setwithdrawalmethod", set_withdrawal_method_command))
-    
+    app.add_handler(CommandHandler("searchotp", searchotp_command))
+    app.add_handler(CommandHandler("balance", balance_command))
+    app.add_handler(CommandHandler("profile", profile_command))
+
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    
-    print("🚀 BOT RUNNING...")  
+
+    print("🚀 BOT RUNNING...")
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
-# নতুন কোডটি এখানে দিন
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+if __name__ == "__main__":
+    main()
